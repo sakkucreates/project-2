@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+:root {
+  /* =========================================================================
+     LumaChat Lavender & White Design System Foundations
+     ========================================================================= */
+
+  /* Base & Canvas */
+  --bg-main: #F8F7FF;
+  --bg-surface: #FFFFFF;
+  --bg-subtle: #F3EFFE;
+  --bg-lavender: #EDE9FE;
+
+  /* Brand Accents & Lavender Scale */
+  --primary: #7C5CFC;
+  --primary-hover: #6C4AE8;
+  --primary-active: #5E3CD8;
+  --primary-subtle: #EDE9FE;
+  --primary-ring: rgba(124, 92, 252, 0.35);
+
+  --lavender-deep: #4C3A8C;
+  --lavender-muted: #8E82B2;
+
+  /* Typography / Text Colors */
+  --text-primary: #1E1B2E;
+  --text-secondary: #4B4562;
+  --text-muted: #797196;
+  --text-inverted: #FFFFFF;
+
+  /* Borders & Dividers */
+  --border-subtle: #E8E3FA;
+  --border-strong: #D5CCF5;
+  --border-focus: #7C5CFC;
+
+  /* Form Elements */
+  --input-bg: #FFFFFF;
+  --input-border: #DCD6F7;
+  --input-text: #1E1B2E;
+  --input-placeholder: #9E96BE;
+
+  /* Status Tokens */
+  --success-bg: #ECFDF5;
+  --success-border: #A7F3D0;
+  --success-text: #065F46;
+  --success-accent: #10B981;
+
+  --warning-bg: #FFFBEB;
+  --warning-border: #FDE68A;
+  --warning-text: #92400E;
+  --warning-accent: #F59E0B;
+
+  --error-bg: #FEF2F2;
+  --error-border: #FECACA;
+  --error-text: #991B1B;
+  --error-accent: #EF4444;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(76, 58, 140, 0.05);
+  --shadow-md: 0 4px 12px -2px rgba(76, 58, 140, 0.08), 0 2px 6px -1px rgba(76, 58, 140, 0.04);
+  --shadow-lg: 0 12px 28px -6px rgba(76, 58, 140, 0.12), 0 6px 14px -3px rgba(76, 58, 140, 0.06);
+
+  /* Radii */
+  --radius-sm: 0.5rem;   /* 8px */
+  --radius-md: 0.75rem;  /* 12px */
+  --radius-lg: 1rem;     /* 16px */
+  --radius-xl: 1.5rem;   /* 24px */
+}
+
+@theme inline {
+  --color-main: var(--bg-main);
+  --color-surface: var(--bg-surface);
+  --color-subtle: var(--bg-subtle);
+  --color-lavender: var(--bg-lavender);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
+  --color-primary-subtle: var(--primary-subtle);
+
+  --color-lavender-deep: var(--lavender-deep);
+  --color-lavender-muted: var(--lavender-muted);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+
+  --color-success: var(--success-accent);
+  --color-warning: var(--warning-accent);
+  --color-error: var(--error-accent);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+body {
+  background: var(--bg-main);
+  color: var(--text-primary);
+  font-family: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Reduced motion preference support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
