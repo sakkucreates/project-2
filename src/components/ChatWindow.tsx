@@ -17,6 +17,7 @@ import {
 import { User, Message, Reaction } from '@/types';
 import { Avatar, Spinner } from '@/components/ui';
 import { compressAndResizeImage } from '@/lib/imageCompression';
+import EmojiPicker from './EmojiPicker';
 
 export const REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏'] as const;
 
@@ -59,6 +60,7 @@ export default function ChatWindow({
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [previewLightbox, setPreviewLightbox] = useState<string | null>(null);
   const [activeReactionMsgId, setActiveReactionMsgId] = useState<string | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -108,6 +110,30 @@ export default function ChatWindow({
     }
   };
 
+  const handleInsertEmoji = (emoji: string) => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart ?? inputText.length;
+      const end = textarea.selectionEnd ?? inputText.length;
+      const before = inputText.substring(0, start);
+      const after = inputText.substring(end);
+      const nextText = `${before}${emoji}${after}`;
+      setInputText(nextText);
+
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+          textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+          textareaRef.current.focus();
+          const nextPos = start + emoji.length;
+          textareaRef.current.setSelectionRange(nextPos, nextPos);
+        }
+      }, 0);
+    } else {
+      setInputText((prev) => prev + emoji);
+    }
+  };
+
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const trimmed = inputText.trim();
@@ -115,6 +141,7 @@ export default function ChatWindow({
 
     setSubmitting(true);
     setImageError(null);
+    setShowEmojiPicker(false);
     const textToSend = trimmed;
     const imageToSend = selectedImage || undefined;
 
@@ -469,65 +496,89 @@ export default function ChatWindow({
       )}
 
       {/* Composer Input Area */}
-      <form
-        onSubmit={handleSend}
-        className="p-3 bg-white border-t border-[#E8E3FA] flex items-end gap-2 z-10 shadow-sm"
-      >
-        {/* Hidden File Input for Image Upload */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif"
-          className="hidden"
-          onChange={handleFileSelect}
-        />
-
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={compressingImage || submitting}
-          title="Attach image"
-          aria-label="Attach image"
-          className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE]/50 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50"
-        >
-          {compressingImage ? (
-            <Spinner size="sm" className="text-[#7C5CFC]" />
-          ) : (
-            <ImageIcon className="w-5 h-5" />
-          )}
-        </button>
-
-        <div className="flex-1 relative">
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={inputText}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              selectedImage
-                ? 'Add an optional caption... (Enter to send)'
-                : `Message ${contact.name}... (Enter to send)`
-            }
-            aria-label={`Message ${contact.name}`}
-            disabled={submitting}
-            className="w-full resize-none min-h-[44px] max-h-32 py-2.5 px-4 bg-[#F8F7FF] border border-[#DCD6F7] rounded-xl text-sm text-[#1E1B2E] placeholder-[#9E96BE] focus:outline-none focus:border-[#7C5CFC] focus:ring-2 focus:ring-[#7C5CFC]/20 transition-all leading-normal"
+      <div className="relative">
+        {showEmojiPicker && (
+          <EmojiPicker
+            onSelectEmoji={handleInsertEmoji}
+            onClose={() => setShowEmojiPicker(false)}
           />
-        </div>
+        )}
 
-        <button
-          type="submit"
-          disabled={(!inputText.trim() && !selectedImage) || submitting || compressingImage}
-          aria-label="Send message"
-          className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2.5 bg-[#7C5CFC] hover:bg-[#6C4AE8] active:bg-[#5E3CD8] disabled:bg-[#EDE9FE] disabled:text-[#8E82B2] disabled:cursor-not-allowed text-white rounded-xl transition-all shadow-md shadow-[#7C5CFC]/20 flex-shrink-0"
+        <form
+          onSubmit={handleSend}
+          className="p-3 bg-white border-t border-[#E8E3FA] flex items-end gap-2 z-10 shadow-sm"
         >
-          {submitting ? (
-            <Spinner size="sm" className="text-white" />
-          ) : (
-            <Send className="w-4 h-4" />
-          )}
-        </button>
-      </form>
+          {/* Hidden File Input for Image Upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={handleFileSelect}
+          />
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={compressingImage || submitting}
+            title="Attach image"
+            aria-label="Attach image"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE]/50 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50"
+          >
+            {compressingImage ? (
+              <Spinner size="sm" className="text-[#7C5CFC]" />
+            ) : (
+              <ImageIcon className="w-5 h-5" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowEmojiPicker((prev) => !prev)}
+            disabled={submitting}
+            title={showEmojiPicker ? 'Close emoji picker' : 'Add emoji'}
+            aria-label={showEmojiPicker ? 'Close emoji picker' : 'Add emoji'}
+            className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50 ${
+              showEmojiPicker
+                ? 'text-[#7C5CFC] bg-[#EDE9FE]'
+                : 'text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE]/50'
+            }`}
+          >
+            <Smile className="w-5 h-5" />
+          </button>
+
+          <div className="flex-1 relative">
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={inputText}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                selectedImage
+                  ? 'Add an optional caption... (Enter to send)'
+                  : `Message ${contact.name}... (Enter to send)`
+              }
+              aria-label={`Message ${contact.name}`}
+              disabled={submitting}
+              className="w-full resize-none min-h-[44px] max-h-32 py-2.5 px-4 bg-[#F8F7FF] border border-[#DCD6F7] rounded-xl text-sm text-[#1E1B2E] placeholder-[#9E96BE] focus:outline-none focus:border-[#7C5CFC] focus:ring-2 focus:ring-[#7C5CFC]/20 transition-all leading-normal"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={(!inputText.trim() && !selectedImage) || submitting || compressingImage}
+            aria-label="Send message"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2.5 bg-[#7C5CFC] hover:bg-[#6C4AE8] active:bg-[#5E3CD8] disabled:bg-[#EDE9FE] disabled:text-[#8E82B2] disabled:cursor-not-allowed text-white rounded-xl transition-all shadow-md shadow-[#7C5CFC]/20 flex-shrink-0"
+          >
+            {submitting ? (
+              <Spinner size="sm" className="text-white" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
+          </button>
+        </form>
+      </div>
 
       {/* Accessible Image Lightbox Modal */}
       {previewLightbox && (
