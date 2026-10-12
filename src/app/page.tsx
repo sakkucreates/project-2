@@ -130,25 +130,7 @@ export default function HomePage() {
         }
       }
 
-      // 3. Verify Server Session via HttpOnly cookie
-      try {
-        const res = await fetch('/api/auth/session', {
-          method: 'GET',
-          cache: 'no-store',
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data.authenticated && data.user && isMounted) {
-            setCurrentUser(data.user);
-            setAppState('authenticated');
-            return;
-          }
-        }
-      } catch {
-        // Proceed to passcode gate on error
-      }
-
+      // Always require password on initial page load / opening the link
       if (isMounted) {
         setAppState('gate');
       }
