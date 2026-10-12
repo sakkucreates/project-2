@@ -199,15 +199,8 @@ export default function HomePage() {
         setUsers(data.users);
         setContactsError(null);
 
-        // Auto-select contact so chat opens immediately on login
-        if (!activeContactRef.current) {
-          const otherContacts = data.users.filter((u: User) => u.id !== currentUser.id);
-          if (otherContacts.length > 0) {
-            setActiveContact(otherContacts[0]);
-            setMobileView('conversation');
-          }
-        } else {
-          // Update active contact status if presence changed
+        // Only update active contact status if one has already been explicitly selected by the user
+        if (activeContactRef.current) {
           const fresh = data.users.find((u: User) => u.id === activeContactRef.current?.id);
           if (fresh && fresh.status !== activeContactRef.current.status) {
             setActiveContact(fresh);
