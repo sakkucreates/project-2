@@ -624,6 +624,18 @@ export default function AdminDashboard({
                       <ExternalLink className="w-3.5 h-3.5" />
                       <span>WhatsApp Share</span>
                     </Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => {
+                        onClose();
+                        onSelectUserForChat(createdUser);
+                      }}
+                      className="gap-1.5 bg-[#10B981] hover:bg-[#059669]"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span>Chat Now</span>
+                    </Button>
                   </div>
                 </Card>
               )}

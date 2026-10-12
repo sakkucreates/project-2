@@ -650,10 +650,14 @@ export default function HomePage() {
       {/* Admin Dashboard Modal */}
       {showAdminModal && currentUser?.role === 'admin' && (
         <AdminDashboard
-          onClose={() => setShowAdminModal(false)}
+          onClose={() => {
+            setShowAdminModal(false);
+            fetchUsers();
+          }}
           onSelectUserForChat={(user) => {
             setShowAdminModal(false);
             handleSelectContact(user);
+            fetchUsers();
           }}
         />
       )}
