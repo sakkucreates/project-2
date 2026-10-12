@@ -92,14 +92,14 @@ export default function PasscodeModal({
             <Lock className="w-7 h-7" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-[#1E1B2E]">
-            Login
+            {mode === 'gate' ? 'Login' : 'Switch Account'}
           </h1>
           <p className="text-xs text-[#797196] mt-1.5 max-w-xs leading-relaxed">
             {mode === 'gate'
               ? 'Enter your password to sign in to your account.'
               : selectedUser
               ? `Enter password for ${selectedUser.name}`
-              : 'Select an account below or enter your password to log in.'}
+              : 'Select an account below to switch, or enter your password.'}
           </p>
         </div>
 
@@ -155,10 +155,10 @@ export default function PasscodeModal({
             {loading ? (
               <>
                 <Spinner size="sm" className="text-white mr-1.5" />
-                <span>Logging in...</span>
+                <span>{mode === 'switcher' ? 'Switching...' : 'Logging in...'}</span>
               </>
             ) : (
-              <span>Login</span>
+              <span>{mode === 'switcher' ? 'Switch Account' : 'Login'}</span>
             )}
           </Button>
 

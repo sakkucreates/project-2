@@ -156,7 +156,7 @@ export default function HomePage() {
     setMessages([]);
     setAuthError(null);
     setShowAdminModal(false);
-    setAppState('gate');
+    setAppState('switcher');
     setMobileView('contacts');
   };
 
