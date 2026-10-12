@@ -322,6 +322,9 @@ export async function getDb(): Promise<DatabaseSchema> {
       const rawMessages = await getKvMessages();
       const users = Array.isArray(rawUsers) && rawUsers.length > 0 ? rawUsers : INITIAL_DATA.users;
       const messages = Array.isArray(rawMessages) ? rawMessages : [];
+      if (!Array.isArray(rawUsers) || rawUsers.length === 0) {
+        await saveKvUsers(INITIAL_DATA.users).catch(() => {});
+      }
       return {
         adminCode: INITIAL_DATA.adminCode,
         users,
