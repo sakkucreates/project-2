@@ -42,6 +42,7 @@ export default function PasscodeModal({
   }, []);
 
   useEffect(() => {
+    if (mode !== 'switcher') return;
     let isMounted = true;
     fetch('/api/admin/users')
       .then((res) => res.json())
@@ -54,7 +55,7 @@ export default function PasscodeModal({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [mode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -184,7 +185,7 @@ export default function PasscodeModal({
           </div>
         </form>
 
-        {(mode === 'switcher' || availableUsers.length > 0) && (
+        {mode === 'switcher' && availableUsers.length > 0 && (
           <div className="mt-6 pt-5 border-t border-[#E8E3FA]">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-semibold text-[#797196] uppercase tracking-wider flex items-center gap-1.5">
