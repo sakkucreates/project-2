@@ -139,7 +139,10 @@ export async function executeKvCommand(
           await new Promise((r) => setTimeout(r, 100 * Math.pow(2, attempt)));
           continue;
         }
-        throw new StorageOperationError(`Upstash KV HTTP error ${res.status}`);
+        const errorDetail = await res.text().catch(() => '');
+        throw new StorageOperationError(
+          `Upstash KV HTTP error ${res.status}${errorDetail ? ': ' + errorDetail.slice(0, 100) : ''}`
+        );
       }
 
       const data = await res.json();
