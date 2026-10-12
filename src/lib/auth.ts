@@ -59,10 +59,7 @@ export async function checkPasscodeRateLimit(clientKey: string): Promise<void> {
       return;
     } catch (err) {
       if (err instanceof RateLimitError) throw err;
-      if (isProductionEnvironment()) {
-        console.error('[RateLimit Error] Production rate limit check failed:', err);
-        throw new RateLimitError('Authentication service rate limit check failed. Please retry.');
-      }
+      console.warn('[RateLimit Warning] Distributed rate limit check failed, falling back to local window:', err);
     }
   }
 

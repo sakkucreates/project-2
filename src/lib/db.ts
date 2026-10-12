@@ -38,11 +38,39 @@ export function isProductionEnvironment(): boolean {
 }
 
 /**
+ * Normalizes and sanitizes Upstash KV credentials.
+ * Automatically handles surrounding quotes, full variable strings, and Bearer prefixes.
+ */
+export function cleanKvCredentials(rawUrl?: string, rawToken?: string): { url: string; token: string } {
+  let url = (rawUrl || '').trim();
+  url = url.replace(/^["']|["']$/g, '').trim();
+  if (url.includes('=')) {
+    url = url.substring(url.indexOf('=') + 1).trim().replace(/^["']|["']$/g, '');
+  }
+  if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+    url = 'https://' + url;
+  }
+
+  let token = (rawToken || '').trim();
+  token = token.replace(/^["']|["']$/g, '').trim();
+  if (token.includes('=')) {
+    token = token.substring(token.indexOf('=') + 1).trim().replace(/^["']|["']$/g, '');
+  }
+  if (token.toLowerCase().startsWith('bearer ')) {
+    token = token.slice(7).trim();
+  }
+
+  return { url, token };
+}
+
+/**
  * Checks if Redis KV credentials are configured.
  */
 export function isKvConfigured(): boolean {
-  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  const rawUrl = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+  const rawToken = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!rawUrl || !rawToken) return false;
+  const { url, token } = cleanKvCredentials(rawUrl, rawToken);
   return Boolean(url && token);
 }
 
@@ -80,11 +108,7 @@ export async function executeKvCommand(
 
   const rawUrl = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '';
   const rawToken = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
-
-  let url = rawUrl.trim();
-  if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    url = 'https://' + url;
-  }
+  const { url, token } = cleanKvCredentials(rawUrl, rawToken);
 
   const maxRetries = options.isIdempotent ? (options.retries ?? 2) : 0;
   let attempt = 0;
@@ -98,7 +122,7 @@ export async function executeKvCommand(
       const res = await fetch(url, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${rawToken.trim()}`,
+          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(command),
