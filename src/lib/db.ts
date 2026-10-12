@@ -26,14 +26,14 @@ const INITIAL_DATA: DatabaseSchema = {
 // Global memory cache for single-process local development fallback
 let memoryStore: DatabaseSchema | null = null;
 
-// Environment credentials for Upstash Redis / Vercel KV REST API
-const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
-
 /**
  * Checks if the current runtime environment is considered production.
+ * Allows ALLOW_LOCAL_DB=true for local machine 'npm start' testing without Upstash Redis.
  */
 export function isProductionEnvironment(): boolean {
+  if (process.env.ALLOW_LOCAL_DB === 'true') {
+    return false;
+  }
   return process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
 }
 
@@ -41,7 +41,9 @@ export function isProductionEnvironment(): boolean {
  * Checks if Redis KV credentials are configured.
  */
 export function isKvConfigured(): boolean {
-  return Boolean(KV_URL && KV_TOKEN);
+  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  return Boolean(url && token);
 }
 
 /**
@@ -76,7 +78,10 @@ export async function executeKvCommand(
     return null;
   }
 
-  let url = KV_URL!.trim();
+  const rawUrl = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '';
+  const rawToken = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
+
+  let url = rawUrl.trim();
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     url = 'https://' + url;
   }
@@ -93,7 +98,7 @@ export async function executeKvCommand(
       const res = await fetch(url, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${KV_TOKEN!.trim()}`,
+          Authorization: `Bearer ${rawToken.trim()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(command),
@@ -294,9 +299,9 @@ function getDbFilePath(): string {
     return path.join('/tmp', isTest ? 'lumachat_test_db.json' : 'lumachat_db.json');
   }
   const dataDir = path.join(process.cwd(), 'data');
-  if (!fs.existsSync(dataDir)) {
+  if (!fs.existsSync(/*turbopackIgnore: true*/ dataDir)) {
     try {
-      fs.mkdirSync(dataDir, { recursive: true });
+      fs.mkdirSync(/*turbopackIgnore: true*/ dataDir, { recursive: true });
     } catch {
       return path.join('/tmp', isTest ? 'lumachat_test_db.json' : 'lumachat_db.json');
     }
@@ -338,8 +343,8 @@ export async function getDb(): Promise<DatabaseSchema> {
   if (!isProductionEnvironment()) {
     const filePath = getDbFilePath();
     try {
-      if (fs.existsSync(filePath)) {
-        const fileData = fs.readFileSync(filePath, 'utf-8');
+      if (fs.existsSync(/*turbopackIgnore: true*/ filePath)) {
+        const fileData = fs.readFileSync(/*turbopackIgnore: true*/ filePath, 'utf-8');
         const parsed = JSON.parse(fileData);
         if (parsed && Array.isArray(parsed.users)) {
           memoryStore = parsed;
@@ -375,7 +380,7 @@ export async function saveDb(data: DatabaseSchema): Promise<void> {
   memoryStore = data;
   const filePath = getDbFilePath();
   try {
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    fs.writeFileSync(/*turbopackIgnore: true*/ filePath, JSON.stringify(data, null, 2), 'utf-8');
   } catch (error) {
     console.warn('[Storage Warning] Could not write DB file to disk:', error);
   }
@@ -397,7 +402,7 @@ export async function resetDatabase(): Promise<DatabaseSchema> {
 
   const filePath = getDbFilePath();
   try {
-    fs.writeFileSync(filePath, JSON.stringify(INITIAL_DATA, null, 2), 'utf-8');
+    fs.writeFileSync(/*turbopackIgnore: true*/ filePath, JSON.stringify(INITIAL_DATA, null, 2), 'utf-8');
   } catch (error) {
     console.warn('[Storage Warning] Could not write reset DB to disk:', error);
   }
