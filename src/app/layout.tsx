@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { APP_CONFIG } from "@/lib/config";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,9 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: `${APP_CONFIG.name} — ${APP_CONFIG.tagline}`,
-  description: APP_CONFIG.description,
-  applicationName: APP_CONFIG.name,
+  title: "Login",
+  description: "Secure direct messaging",
 };
 
 export const viewport: Viewport = {

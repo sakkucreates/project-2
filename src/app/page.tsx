@@ -518,9 +518,6 @@ export default function HomePage() {
             <Lock className="w-7 h-7" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-[#1E1B2E] mb-1">
-              {APP_CONFIG.name}
-            </h1>
             <p className="text-xs text-[#797196] flex items-center justify-center gap-2">
               <Spinner size="sm" />
               <span>Verifying secure session...</span>
