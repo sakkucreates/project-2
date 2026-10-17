@@ -4,6 +4,7 @@ import React from 'react';
 import { Search, Shield, LogOut, MessageSquarePlus } from 'lucide-react';
 import { User, Message } from '@/types';
 import { Avatar, Badge, Spinner } from '@/components/ui';
+import { formatConversationTimestamp } from '@/lib/dateUtils';
 
 export interface ContactsSidebarProps {
   currentUser: User;
@@ -173,10 +174,7 @@ export default function ContactsSidebar({
                     </span>
                     {user.lastMessage && (
                       <span className="text-[10px] text-[#797196] flex-shrink-0 ml-1">
-                        {new Date(user.lastMessage.createdAt).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        {formatConversationTimestamp(user.lastMessage.createdAt)}
                       </span>
                     )}
                   </div>

@@ -18,6 +18,7 @@ import { User, Message, Reaction } from '@/types';
 import { Avatar, Spinner } from '@/components/ui';
 import { compressAndResizeImage } from '@/lib/imageCompression';
 import EmojiPicker from './EmojiPicker';
+import { isDifferentCalendarDay, formatDateDivider } from '@/lib/dateUtils';
 
 export const REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏'] as const;
 
@@ -307,16 +308,27 @@ export default function ChatWindow({
             </p>
           </div>
         ) : (
-          messages.map((msg) => {
+          messages.map((msg, idx) => {
             const isMe = msg.senderId === currentUser.id;
             const isPickerOpen = activeReactionMsgId === msg.id;
+            const showDateDivider = isDifferentCalendarDay(
+              msg.createdAt,
+              messages[idx - 1]?.createdAt
+            );
 
             return (
-              <div
-                key={msg.id}
-                className={`flex flex-col group relative ${isMe ? 'items-end' : 'items-start'}`}
-              >
-                <div className="relative max-w-[85%] sm:max-w-md">
+              <React.Fragment key={msg.id}>
+                {showDateDivider && (
+                  <div className="flex justify-center my-3 select-none">
+                    <span className="bg-white/90 border border-[#E8E3FA] text-[#797196] text-[11px] font-semibold px-3 py-1 rounded-full shadow-xs">
+                      {formatDateDivider(msg.createdAt)}
+                    </span>
+                  </div>
+                )}
+                <div
+                  className={`flex flex-col group relative ${isMe ? 'items-end' : 'items-start'}`}
+                >
+                  <div className="relative max-w-[85%] sm:max-w-md">
                   {/* Reaction Button (Hover / Touch Action) */}
                   {!msg.isOptimistic && !msg.failed && onReactToMessage && (
                     <button
@@ -450,8 +462,9 @@ export default function ChatWindow({
                   )}
                 </div>
               </div>
-            );
-          })
+            </React.Fragment>
+          );
+        })
         )}
         <div ref={messagesEndRef} />
       </div>
