@@ -31,6 +31,7 @@ export interface Message {
   receiverId: string;
   text: string;
   image?: string;                // Base64 data URI
+  video?: string;                // Base64 data URI
   createdAt: string;             // ISO 8601 timestamp
   read: boolean;
   reactions?: Reaction[];
@@ -82,5 +83,6 @@ export interface AppMetadataConfig {
   };
   limits: {
     maxImageSizeBytes: number;
+    maxVideoSizeBytes: number;
   };
 }

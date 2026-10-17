@@ -44,10 +44,11 @@ export async function POST(request: Request) {
       receiverId?: string;
       text?: string;
       image?: string;
+      video?: string;
       idempotencyKey?: string;
     }>(request);
 
-    const { receiverId, text, image, idempotencyKey } = body;
+    const { receiverId, text, image, video, idempotencyKey } = body;
     let { senderId } = body;
 
     if (!receiverId || typeof receiverId !== 'string') {
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const { text: validatedText, image: validatedImage } = validateMessageContent(text, image);
+    const { text: validatedText, image: validatedImage, video: validatedVideo } = validateMessageContent(text, image, video);
     const validatedIdempotencyKey = validateIdempotencyKey(idempotencyKey);
 
     const message = await createMessage({
@@ -76,6 +77,7 @@ export async function POST(request: Request) {
       receiverId,
       text: validatedText,
       image: validatedImage,
+      video: validatedVideo,
       idempotencyKey: validatedIdempotencyKey,
     });
 

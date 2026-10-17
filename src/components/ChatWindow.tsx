@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Send,
   Image as ImageIcon,
+  Video as VideoIcon,
   ArrowLeft,
   CheckCheck,
   Check,
@@ -17,6 +18,7 @@ import {
 import { User, Message, Reaction } from '@/types';
 import { Avatar, Spinner } from '@/components/ui';
 import { compressAndResizeImage } from '@/lib/imageCompression';
+import { APP_CONFIG } from '@/lib/config';
 import EmojiPicker from './EmojiPicker';
 import { isDifferentCalendarDay, formatDateDivider } from '@/lib/dateUtils';
 
@@ -31,8 +33,8 @@ export interface ChatWindowProps {
   currentUser: User;
   contact: User;
   messages: ChatMessageItem[];
-  onSendMessage: (text: string, image?: string) => Promise<boolean>;
-  onRetryMessage?: (messageId: string, text: string, image?: string) => Promise<void>;
+  onSendMessage: (text: string, image?: string, video?: string) => Promise<boolean>;
+  onRetryMessage?: (messageId: string, text: string, image?: string, video?: string) => Promise<void>;
   onReactToMessage?: (messageId: string, emoji: string) => Promise<void>;
   onClearChat?: () => Promise<boolean>;
   onBack: () => void;
@@ -54,8 +56,10 @@ export default function ChatWindow({
 }: ChatWindowProps) {
   const [inputText, setInputText] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [compressingImage, setCompressingImage] = useState(false);
+  const [readingVideo, setReadingVideo] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -66,6 +70,7 @@ export default function ChatWindow({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const lastActiveImageTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   const scrollToBottom = () => {
@@ -103,10 +108,51 @@ export default function ChatWindow({
     try {
       const { dataUrl } = await compressAndResizeImage(file);
       setSelectedImage(dataUrl);
+      setSelectedVideo(null); // Keep one media attachment per message
     } catch (err) {
       setImageError(err instanceof Error ? err.message : 'Failed to process image attachment.');
     } finally {
       setCompressingImage(false);
+      e.target.value = '';
+    }
+  };
+
+  // Video file selection & validation
+  const handleVideoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImageError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > APP_CONFIG.limits.maxVideoSizeBytes) {
+      setImageError('Video exceeds 15MB limit. Please choose a smaller video clip.');
+      e.target.value = '';
+      return;
+    }
+
+    const allowedVideo = ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-matroska'];
+    if (!allowedVideo.includes(file.type.toLowerCase()) && !file.type.startsWith('video/')) {
+      setImageError('Unsupported format. Please select an MP4, WebM, OGG, or MOV video.');
+      e.target.value = '';
+      return;
+    }
+
+    setReadingVideo(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setSelectedVideo(reader.result as string);
+        setSelectedImage(null); // Keep one media attachment per message
+        setReadingVideo(false);
+      };
+      reader.onerror = () => {
+        setImageError('Failed to read video file.');
+        setReadingVideo(false);
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setImageError('Failed to process video attachment.');
+      setReadingVideo(false);
+    } finally {
       e.target.value = '';
     }
   };
@@ -138,27 +184,30 @@ export default function ChatWindow({
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const trimmed = inputText.trim();
-    if ((!trimmed && !selectedImage) || submitting) return;
+    if ((!trimmed && !selectedImage && !selectedVideo) || submitting || readingVideo) return;
 
     setSubmitting(true);
     setImageError(null);
     setShowEmojiPicker(false);
     const textToSend = trimmed;
     const imageToSend = selectedImage || undefined;
+    const videoToSend = selectedVideo || undefined;
 
     setInputText('');
     setSelectedImage(null);
+    setSelectedVideo(null);
 
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
 
     try {
-      const success = await onSendMessage(textToSend, imageToSend);
+      const success = await onSendMessage(textToSend, imageToSend, videoToSend);
       if (!success) {
         // Restore input if message failed entirely to dispatch
         setInputText(textToSend);
         if (imageToSend) setSelectedImage(imageToSend);
+        if (videoToSend) setSelectedVideo(videoToSend);
       }
     } finally {
       setSubmitting(false);
@@ -404,6 +453,19 @@ export default function ChatWindow({
                       </button>
                     )}
 
+                    {/* Video Attachment Preview */}
+                    {msg.video && (
+                      <div className="mb-2 block overflow-hidden rounded-xl bg-black/10">
+                        <video
+                          src={msg.video}
+                          controls
+                          playsInline
+                          preload="metadata"
+                          className="max-h-64 max-w-full rounded-xl object-contain bg-black shadow-xs"
+                        />
+                      </div>
+                    )}
+
                     {/* Text Content */}
                     {msg.text && (
                       <p className="whitespace-pre-wrap break-words leading-relaxed select-text">
@@ -452,7 +514,7 @@ export default function ChatWindow({
                     <div className="flex items-center justify-end gap-1.5 mt-1 text-[11px] text-[#EF4444]">
                       <span>Failed to send.</span>
                       <button
-                        onClick={() => onRetryMessage(msg.id, msg.text, msg.image)}
+                        onClick={() => onRetryMessage(msg.id, msg.text, msg.image, msg.video)}
                         className="font-semibold underline flex items-center gap-0.5 hover:text-[#DC2626]"
                       >
                         <RefreshCw className="w-3 h-3" />
@@ -495,7 +557,35 @@ export default function ChatWindow({
         </div>
       )}
 
-      {/* Image Error Alert */}
+      {/* Selected Video Preview Staging */}
+      {selectedVideo && (
+        <div className="px-4 py-2 bg-white border-t border-[#E8E3FA] flex items-center justify-between animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-black/10 border border-[#D5CCF5] flex items-center justify-center overflow-hidden relative">
+              <video
+                src={selectedVideo}
+                className="w-full h-full object-cover"
+                muted
+                playsInline
+              />
+            </div>
+            <div>
+              <span className="text-xs font-medium text-[#1E1B2E] block">Video attached</span>
+              <span className="text-[10px] text-[#797196]">Ready to send</span>
+            </div>
+          </div>
+          <button
+            onClick={() => setSelectedVideo(null)}
+            className="p-1.5 text-[#797196] hover:text-[#EF4444] rounded-lg transition-colors"
+            title="Cancel video attachment"
+            aria-label="Cancel video attachment"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Image / Video Error Alert */}
       {imageError && (
         <div className="px-4 py-2 bg-[#FEF2F2] border-t border-[#FECACA] flex items-center justify-between text-xs text-[#991B1B]">
           <span>{imageError}</span>
@@ -530,10 +620,19 @@ export default function ChatWindow({
             onChange={handleFileSelect}
           />
 
+          {/* Hidden File Input for Video Upload */}
+          <input
+            ref={videoInputRef}
+            type="file"
+            accept="video/mp4,video/webm,video/ogg,video/quicktime,video/*"
+            className="hidden"
+            onChange={handleVideoSelect}
+          />
+
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={compressingImage || submitting}
+            disabled={compressingImage || readingVideo || submitting}
             title="Attach image"
             aria-label="Attach image"
             className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE]/50 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50"
@@ -542,6 +641,21 @@ export default function ChatWindow({
               <Spinner size="sm" className="text-[#7C5CFC]" />
             ) : (
               <ImageIcon className="w-5 h-5" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => videoInputRef.current?.click()}
+            disabled={readingVideo || compressingImage || submitting}
+            title="Attach video"
+            aria-label="Attach video"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE]/50 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50"
+          >
+            {readingVideo ? (
+              <Spinner size="sm" className="text-[#7C5CFC]" />
+            ) : (
+              <VideoIcon className="w-5 h-5" />
             )}
           </button>
 
@@ -570,6 +684,8 @@ export default function ChatWindow({
               placeholder={
                 selectedImage
                   ? 'Add an optional caption... (Enter to send)'
+                  : selectedVideo
+                  ? 'Add an optional caption for video... (Enter to send)'
                   : `Message ${contact.name}... (Enter to send)`
               }
               aria-label={`Message ${contact.name}`}
@@ -580,7 +696,12 @@ export default function ChatWindow({
 
           <button
             type="submit"
-            disabled={(!inputText.trim() && !selectedImage) || submitting || compressingImage}
+            disabled={
+              (!inputText.trim() && !selectedImage && !selectedVideo) ||
+              submitting ||
+              compressingImage ||
+              readingVideo
+            }
             aria-label="Send message"
             className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2.5 bg-[#7C5CFC] hover:bg-[#6C4AE8] active:bg-[#5E3CD8] disabled:bg-[#EDE9FE] disabled:text-[#8E82B2] disabled:cursor-not-allowed text-white rounded-xl transition-all shadow-md shadow-[#7C5CFC]/20 flex-shrink-0"
           >

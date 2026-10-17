@@ -365,10 +365,11 @@ export default function HomePage() {
   const handleSendMessage = async (
     text: string,
     image?: string,
+    video?: string,
     existingIdempotencyKey?: string,
     existingTempId?: string
   ): Promise<boolean> => {
-    if (!currentUser || !activeContact || (!text.trim() && !image)) return false;
+    if (!currentUser || !activeContact || (!text.trim() && !image && !video)) return false;
 
     const trimmedText = text.trim();
     const tempId = existingTempId || `opt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -381,6 +382,7 @@ export default function HomePage() {
       receiverId: activeContact.id,
       text: trimmedText,
       image,
+      video,
       createdAt: new Date().toISOString(),
       read: false,
       isOptimistic: true,
@@ -405,6 +407,7 @@ export default function HomePage() {
           receiverId: activeContact.id,
           text: trimmedText || undefined,
           image: image || undefined,
+          video: video || undefined,
           idempotencyKey,
         }),
       });
@@ -441,9 +444,9 @@ export default function HomePage() {
   };
 
   // Retry sending failed message using its original idempotencyKey to prevent duplicate persistence
-  const handleRetryMessage = async (failedMsgId: string, text: string, image?: string) => {
+  const handleRetryMessage = async (failedMsgId: string, text: string, image?: string, video?: string) => {
     const failedItem = messages.find((m) => m.id === failedMsgId);
-    await handleSendMessage(text, image, failedItem?.idempotencyKey, failedMsgId);
+    await handleSendMessage(text, image, video, failedItem?.idempotencyKey, failedMsgId);
   };
 
   // Handle toggling reaction on a message

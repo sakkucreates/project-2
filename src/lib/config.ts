@@ -28,6 +28,7 @@ export const APP_CONFIG: AppMetadataConfig = {
   },
   limits: {
     maxImageSizeBytes: 5 * 1024 * 1024, // 5MB
+    maxVideoSizeBytes: 15 * 1024 * 1024, // 15MB
   },
 };
 

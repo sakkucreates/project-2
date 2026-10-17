@@ -25,6 +25,10 @@ const VALID_PNG_DATA_URI =
 const INVALID_SVG_DATA_URI =
   'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIvPjwvc3ZnPg==';
 
+// Small valid MP4 data URI for testing
+const VALID_MP4_DATA_URI =
+  'data:video/mp4;base64,AAAAHGZ0eXBtcDQyAAAAAG1wNDJpc29tYXZjMQAAAAhmcmVlAAAAGG1kYXQ=';
+
 describe('LumaChat Phase 6: Advanced Chat Features Tests', () => {
   let userA;
   let userB;
@@ -127,6 +131,54 @@ describe('LumaChat Phase 6: Advanced Chat Features Tests', () => {
 
     const data = await res.json();
     assert.match(data.error, /exceeds 5MB limit/i);
+  });
+
+  // -------------------------------------------------------------
+  // Video Attachments & Validation
+  // -------------------------------------------------------------
+  test('POST /api/messages accepts valid video attachments', async () => {
+    const req = new Request('http://localhost:3000/api/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `${SESSION_COOKIE_NAME}=${tokenA}`,
+      },
+      body: JSON.stringify({
+        receiverId: userB.id,
+        text: 'Watch this clip',
+        video: VALID_MP4_DATA_URI,
+      }),
+    });
+
+    const res = await messagesPost(req);
+    assert.equal(res.status, 200);
+
+    const data = await res.json();
+    assert.equal(data.success, true);
+    assert.equal(data.message.senderId, userA.id);
+    assert.equal(data.message.receiverId, userB.id);
+    assert.equal(data.message.video, VALID_MP4_DATA_URI);
+    assert.equal(data.message.text, 'Watch this clip');
+  });
+
+  test('POST /api/messages rejects unsupported video formats', async () => {
+    const req = new Request('http://localhost:3000/api/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `${SESSION_COOKIE_NAME}=${tokenA}`,
+      },
+      body: JSON.stringify({
+        receiverId: userB.id,
+        video: 'data:video/unknown;base64,AAAA',
+      }),
+    });
+
+    const res = await messagesPost(req);
+    assert.equal(res.status, 400);
+
+    const data = await res.json();
+    assert.match(data.error, /Supported video formats: MP4, WebM, OGG, MOV/i);
   });
 
   // -------------------------------------------------------------
@@ -307,6 +359,11 @@ describe('LumaChat Phase 6: Advanced Chat Features Tests', () => {
     assert.match(content, /handleFileSelect/);
     assert.match(content, /accept=["']image\/jpeg,image\/png,image\/webp,image\/gif["']/);
     assert.match(content, /selectedImage/);
+
+    // Video file attachment, staging, & player
+    assert.match(content, /handleVideoSelect/);
+    assert.match(content, /selectedVideo/);
+    assert.match(content, /<video/);
 
     // Lightbox modal with accessible role and Escape key support
     assert.match(content, /role=["']dialog["']/);

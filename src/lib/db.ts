@@ -224,7 +224,7 @@ async function getKvMessages(): Promise<Message[] | null> {
 
       for (const m of parsed) {
         const timeBucket = Math.floor(new Date(m.createdAt).getTime() / 3000);
-        const sig = `${m.senderId}_${m.receiverId}_${(m.text || '').trim()}_${m.image || ''}_${timeBucket}`;
+        const sig = `${m.senderId}_${m.receiverId}_${(m.text || '').trim()}_${m.image || ''}_${m.video || ''}_${timeBucket}`;
 
         if (!seenIds.has(m.id) && !seenSignatures.has(sig)) {
           seenIds.add(m.id);
@@ -590,6 +590,7 @@ export async function createMessage(
 
   const textTrim = (msgData.text || '').trim();
   const imgStr = msgData.image || '';
+  const vidStr = msgData.video || '';
   const now = Date.now();
   const idempotencyKey = msgData.idempotencyKey;
 
@@ -610,7 +611,7 @@ export async function createMessage(
   }
 
   // 2. In-Memory Signature Deduplication Check (3-second window)
-  const sig = `${msgData.senderId}_${msgData.receiverId}_${textTrim}_${imgStr}`;
+  const sig = `${msgData.senderId}_${msgData.receiverId}_${textTrim}_${imgStr}_${vidStr}`;
   const lastSentTime = recentSentSignatures.get(sig);
   if (lastSentTime && now - lastSentTime < 3000) {
     if (memoryStore && Array.isArray(memoryStore.messages)) {
@@ -619,7 +620,8 @@ export async function createMessage(
           m.senderId === msgData.senderId &&
           m.receiverId === msgData.receiverId &&
           (m.text || '').trim() === textTrim &&
-          (m.image || '') === imgStr
+          (m.image || '') === imgStr &&
+          (m.video || '') === vidStr
       );
       if (match) return match;
     }

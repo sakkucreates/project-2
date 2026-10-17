@@ -7,8 +7,8 @@ import { APP_CONFIG } from '@/lib/config';
  */
 export async function parseJsonBody<T = unknown>(request: Request): Promise<T> {
   const contentLength = request.headers.get('content-length');
-  if (contentLength && parseInt(contentLength, 10) > 6 * 1024 * 1024) {
-    throw new ValidationError('Payload too large. Maximum request body size is 6MB.');
+  if (contentLength && parseInt(contentLength, 10) > 20 * 1024 * 1024) {
+    throw new ValidationError('Payload too large. Maximum request body size is 20MB.');
   }
 
   try {
@@ -102,8 +102,9 @@ export function validateNotes(notes: unknown): string {
  */
 export function validateMessageContent(
   text: unknown,
-  image: unknown
-): { text: string; image?: string } {
+  image: unknown,
+  video?: unknown
+): { text: string; image?: string; video?: string } {
   let validatedText = '';
   if (typeof text === 'string') {
     validatedText = text.trim();
@@ -135,13 +136,36 @@ export function validateMessageContent(
     validatedImage = trimmedImg;
   }
 
-  if (!validatedText && !validatedImage) {
-    throw new ValidationError('Message must contain either text content or an image attachment.');
+  let validatedVideo: string | undefined = undefined;
+  if (video !== undefined && video !== null && video !== '') {
+    if (typeof video !== 'string') {
+      throw new ValidationError('Video attachment must be a base64 data URI string.');
+    }
+    const trimmedVid = video.trim();
+    // Enforce allowed video MIME types: MP4, WebM, OGG, QuickTime MOV, Matroska
+    const videoMimeMatch = trimmedVid.match(/^data:(video\/(mp4|webm|ogg|quicktime|x-matroska));base64,/i);
+    if (!videoMimeMatch) {
+      throw new ValidationError(
+        'Invalid or unsupported video format. Supported video formats: MP4, WebM, OGG, MOV.'
+      );
+    }
+
+    const base64Content = trimmedVid.split(',')[1] || '';
+    const approximateBytes = Math.ceil((base64Content.length * 3) / 4);
+    if (approximateBytes > APP_CONFIG.limits.maxVideoSizeBytes) {
+      throw new ValidationError('Video attachment exceeds 15MB limit.');
+    }
+    validatedVideo = trimmedVid;
+  }
+
+  if (!validatedText && !validatedImage && !validatedVideo) {
+    throw new ValidationError('Message must contain either text content or an image attachment (or video).');
   }
 
   return {
     text: validatedText,
     image: validatedImage,
+    video: validatedVideo,
   };
 }
 

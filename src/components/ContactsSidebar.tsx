@@ -181,7 +181,12 @@ export default function ContactsSidebar({
 
                   <div className="flex items-center justify-between mt-0.5">
                     <p className="text-xs text-[#797196] truncate pr-2">
-                      {user.lastMessage?.text || (user.lastMessage?.image ? '📷 Photo' : 'No messages yet')}
+                      {user.lastMessage?.text ||
+                        (user.lastMessage?.image
+                          ? '📷 Photo'
+                          : user.lastMessage?.video
+                          ? '🎥 Video'
+                          : 'No messages yet')}
                     </p>
                     {Boolean(user.unreadCount && user.unreadCount > 0) && (
                       <span className="min-w-4 h-4 px-1.5 rounded-full bg-[#7C5CFC] text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 shadow-sm">
