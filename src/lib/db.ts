@@ -718,6 +718,26 @@ export async function clearConversationMessages(
   return true;
 }
 
+export async function deleteMessage(messageId: string): Promise<boolean> {
+  assertPersistenceAvailable('deleteMessage');
+
+  const db = await getDb();
+  const initialLength = db.messages.length;
+  db.messages = db.messages.filter((m) => m.id !== messageId);
+
+  if (memoryStore && Array.isArray(memoryStore.messages)) {
+    memoryStore.messages = memoryStore.messages.filter((m) => m.id !== messageId);
+  }
+
+  if (isKvConfigured()) {
+    await saveKvMessages(db.messages);
+  } else {
+    await saveDb(db);
+  }
+
+  return db.messages.length < initialLength;
+}
+
 export async function addReactionToMessage(
   messageId: string,
   userId: string,

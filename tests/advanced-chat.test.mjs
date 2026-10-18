@@ -7,10 +7,11 @@ import path from 'node:path';
 import {
   createUser,
   createMessage,
+  deleteMessage,
   resetDatabase,
   getConversationMessages,
 } from '../src/lib/db.ts';
-import { POST as messagesPost } from '../src/app/api/messages/route.ts';
+import { POST as messagesPost, DELETE as messagesDelete } from '../src/app/api/messages/route.ts';
 import { POST as reactPost } from '../src/app/api/messages/react/route.ts';
 import { POST as clearPost } from '../src/app/api/messages/clear/route.ts';
 import { createSessionToken, SESSION_COOKIE_NAME } from '../src/lib/auth.ts';
@@ -349,6 +350,51 @@ describe('LumaChat Phase 6: Advanced Chat Features Tests', () => {
   });
 
   // -------------------------------------------------------------
+  // Single Message Deletion Tests
+  // -------------------------------------------------------------
+  test('DELETE /api/messages deletes individual message when authenticated', async () => {
+    const msg = await createMessage({
+      senderId: userA.id,
+      receiverId: userB.id,
+      text: 'Message to be deleted',
+    });
+
+    const beforeMsgs = await getConversationMessages(userA.id, userB.id);
+    assert.equal(beforeMsgs.some((m) => m.id === msg.id), true);
+
+    const req = new Request(`http://localhost:3000/api/messages?messageId=${msg.id}`, {
+      method: 'DELETE',
+      headers: {
+        Cookie: `${SESSION_COOKIE_NAME}=${tokenA}`,
+      },
+    });
+
+    const res = await messagesDelete(req);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.success, true);
+    assert.equal(body.deleted, true);
+
+    const afterMsgs = await getConversationMessages(userA.id, userB.id);
+    assert.equal(afterMsgs.some((m) => m.id === msg.id), false);
+  });
+
+  test('DELETE /api/messages rejects unauthenticated caller', async () => {
+    const msg = await createMessage({
+      senderId: userA.id,
+      receiverId: userB.id,
+      text: 'Cannot delete without auth',
+    });
+
+    const req = new Request(`http://localhost:3000/api/messages?messageId=${msg.id}`, {
+      method: 'DELETE',
+    });
+
+    const res = await messagesDelete(req);
+    assert.equal(res.status, 403);
+  });
+
+  // -------------------------------------------------------------
   // UI Component Contract & Accessibility Checks
   // -------------------------------------------------------------
   test('ChatWindow.tsx includes image attachments, lightbox dialog, reactions, and clear modal', () => {
@@ -377,5 +423,14 @@ describe('LumaChat Phase 6: Advanced Chat Features Tests', () => {
     // Clear chat confirmation dialog
     assert.match(content, /showClearConfirm/);
     assert.match(content, /Clear this conversation\?/);
+
+    // WhatsApp-style message options menu
+    assert.match(content, /ChevronDown/);
+    assert.match(content, /activeMenuMsgId/);
+    assert.match(content, /Reply/);
+    assert.match(content, /Pin/);
+    assert.match(content, /Star/);
+    assert.match(content, /Delete/);
   });
 });
+

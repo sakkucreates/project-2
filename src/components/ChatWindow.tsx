@@ -14,6 +14,11 @@ import {
   Smile,
   X,
   Trash2,
+  ChevronDown,
+  Reply,
+  Pin,
+  Star,
+  Plus,
 } from 'lucide-react';
 import { User, Message, Reaction } from '@/types';
 import { Avatar, Spinner } from '@/components/ui';
@@ -33,9 +38,10 @@ export interface ChatWindowProps {
   currentUser: User;
   contact: User;
   messages: ChatMessageItem[];
-  onSendMessage: (text: string, image?: string, video?: string) => Promise<boolean>;
+  onSendMessage: (text: string, image?: string, video?: string, replyTo?: Message['replyTo']) => Promise<boolean>;
   onRetryMessage?: (messageId: string, text: string, image?: string, video?: string) => Promise<void>;
   onReactToMessage?: (messageId: string, emoji: string) => Promise<void>;
+  onDeleteMessage?: (messageId: string) => Promise<boolean>;
   onClearChat?: () => Promise<boolean>;
   onBack: () => void;
   loading: boolean;
@@ -49,6 +55,7 @@ export default function ChatWindow({
   onSendMessage,
   onRetryMessage,
   onReactToMessage,
+  onDeleteMessage,
   onClearChat,
   onBack,
   loading,
@@ -65,6 +72,10 @@ export default function ChatWindow({
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [previewLightbox, setPreviewLightbox] = useState<string | null>(null);
   const [activeReactionMsgId, setActiveReactionMsgId] = useState<string | null>(null);
+  const [activeMenuMsgId, setActiveMenuMsgId] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ChatMessageItem | null>(null);
+  const [pinnedMsgIds, setPinnedMsgIds] = useState<Set<string>>(() => new Set());
+  const [starredMsgIds, setStarredMsgIds] = useState<Set<string>>(() => new Set());
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -72,6 +83,29 @@ export default function ChatWindow({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const lastActiveImageTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close message options menu on click outside or Escape
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setActiveMenuMsgId(null);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActiveMenuMsgId(null);
+      }
+    };
+    if (activeMenuMsgId) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeMenuMsgId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -192,7 +226,15 @@ export default function ChatWindow({
     const textToSend = trimmed;
     const imageToSend = selectedImage || undefined;
     const videoToSend = selectedVideo || undefined;
+    const replyToData = replyingTo
+      ? {
+          id: replyingTo.id,
+          text: replyingTo.text,
+          senderName: replyingTo.senderId === currentUser.id ? currentUser.name : contact.name,
+        }
+      : undefined;
 
+    setReplyingTo(null);
     setInputText('');
     setSelectedImage(null);
     setSelectedVideo(null);
@@ -202,7 +244,7 @@ export default function ChatWindow({
     }
 
     try {
-      const success = await onSendMessage(textToSend, imageToSend, videoToSend);
+      const success = await onSendMessage(textToSend, imageToSend, videoToSend, replyToData);
       if (!success) {
         // Restore input if message failed entirely to dispatch
         setInputText(textToSend);
@@ -360,6 +402,9 @@ export default function ChatWindow({
           messages.map((msg, idx) => {
             const isMe = msg.senderId === currentUser.id;
             const isPickerOpen = activeReactionMsgId === msg.id;
+            const isMenuOpen = activeMenuMsgId === msg.id;
+            const isPinned = pinnedMsgIds.has(msg.id) || Boolean(msg.pinned);
+            const isStarred = starredMsgIds.has(msg.id) || Boolean(msg.starred);
             const showDateDivider = isDifferentCalendarDay(
               msg.createdAt,
               messages[idx - 1]?.createdAt
@@ -381,7 +426,10 @@ export default function ChatWindow({
                   {/* Reaction Button (Hover / Touch Action) */}
                   {!msg.isOptimistic && !msg.failed && onReactToMessage && (
                     <button
-                      onClick={() => setActiveReactionMsgId(isPickerOpen ? null : msg.id)}
+                      onClick={() => {
+                        setActiveMenuMsgId(null);
+                        setActiveReactionMsgId(isPickerOpen ? null : msg.id);
+                      }}
                       title="Add reaction"
                       aria-label="Add reaction"
                       className={`absolute -top-3 ${
@@ -424,14 +472,179 @@ export default function ChatWindow({
                     </div>
                   )}
 
+                  {/* WhatsApp-Style Message Options Menu */}
+                  {isMenuOpen && (
+                    <div
+                      ref={menuRef}
+                      onClick={(e) => e.stopPropagation()}
+                      className={`absolute z-30 top-8 ${
+                        isMe ? 'right-0' : 'right-0 sm:left-auto'
+                      } flex flex-col items-start animate-fadeIn drop-shadow-xl`}
+                    >
+                      {/* 1. Quick Emoji Reaction Bar */}
+                      <div className="flex items-center gap-1 px-2.5 py-1.5 mb-1.5 bg-white border border-[#E8E3FA] rounded-full shadow-lg">
+                        {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={async () => {
+                              setActiveMenuMsgId(null);
+                              if (onReactToMessage) {
+                                await onReactToMessage(msg.id, emoji);
+                              }
+                            }}
+                            className="hover:scale-125 transition-transform p-1 text-base leading-none"
+                            title={`React with ${emoji}`}
+                            aria-label={`React with ${emoji}`}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveMenuMsgId(null);
+                            setActiveReactionMsgId(msg.id);
+                          }}
+                          className="p-1 text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE] rounded-full transition-colors leading-none"
+                          title="More reactions"
+                          aria-label="More reactions"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* 2. Vertical Action Menu Options */}
+                      <div className="w-44 bg-white border border-[#E8E3FA] rounded-2xl shadow-xl py-1.5 overflow-hidden text-sm">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveMenuMsgId(null);
+                            setReplyingTo(msg);
+                            textareaRef.current?.focus();
+                          }}
+                          className="w-full flex items-center gap-3 px-3.5 py-2 text-[#1E1B2E] hover:bg-[#F8F7FF] hover:text-[#7C5CFC] transition-colors text-left"
+                        >
+                          <Reply className="w-4 h-4 text-[#797196]" />
+                          <span>Reply</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveMenuMsgId(null);
+                            setActiveReactionMsgId(msg.id);
+                          }}
+                          className="w-full flex items-center gap-3 px-3.5 py-2 text-[#1E1B2E] hover:bg-[#F8F7FF] hover:text-[#7C5CFC] transition-colors text-left"
+                        >
+                          <Smile className="w-4 h-4 text-[#797196]" />
+                          <span>React</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveMenuMsgId(null);
+                            setPinnedMsgIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(msg.id)) next.delete(msg.id);
+                              else next.add(msg.id);
+                              return next;
+                            });
+                          }}
+                          className="w-full flex items-center gap-3 px-3.5 py-2 text-[#1E1B2E] hover:bg-[#F8F7FF] hover:text-[#7C5CFC] transition-colors text-left"
+                        >
+                          <Pin className="w-4 h-4 text-[#797196]" />
+                          <span>{isPinned ? 'Unpin' : 'Pin'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveMenuMsgId(null);
+                            setStarredMsgIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(msg.id)) next.delete(msg.id);
+                              else next.add(msg.id);
+                              return next;
+                            });
+                          }}
+                          className="w-full flex items-center gap-3 px-3.5 py-2 text-[#1E1B2E] hover:bg-[#F8F7FF] hover:text-[#7C5CFC] transition-colors text-left"
+                        >
+                          <Star className={`w-4 h-4 ${isStarred ? 'fill-[#EAB308] text-[#EAB308]' : 'text-[#797196]'}`} />
+                          <span>{isStarred ? 'Unstar' : 'Star'}</span>
+                        </button>
+
+                        <div className="my-1 border-t border-[#F0EDFD]" />
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setActiveMenuMsgId(null);
+                            if (onDeleteMessage) {
+                              await onDeleteMessage(msg.id);
+                            }
+                          }}
+                          className="w-full flex items-center gap-3 px-3.5 py-2 text-[#EF4444] hover:bg-[#FEF2F2] transition-colors text-left font-medium"
+                        >
+                          <Trash2 className="w-4 h-4 text-[#EF4444]" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Chat Message Bubble */}
                   <div
-                    className={`rounded-2xl px-4 py-2.5 text-sm shadow-sm transition-all ${
+                    className={`relative rounded-2xl px-4 py-2.5 text-sm shadow-sm transition-all group/bubble ${
                       isMe
                         ? 'bg-[#7C5CFC] text-white rounded-br-none'
                         : 'bg-white text-[#1E1B2E] border border-[#E8E3FA] rounded-bl-none shadow-md shadow-[#4C3A8C]/5'
                     } ${msg.failed ? 'border-2 border-[#EF4444] bg-[#FEF2F2] text-[#991B1B]' : ''}`}
                   >
+                    {/* Message Options Chevron Down Button (WhatsApp Style) */}
+                    {!msg.isOptimistic && !msg.failed && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveReactionMsgId(null);
+                          setActiveMenuMsgId(isMenuOpen ? null : msg.id);
+                        }}
+                        title="Message options"
+                        aria-label="Message options"
+                        className={`absolute top-1.5 right-1.5 p-1 rounded-full transition-all z-10 ${
+                          isMenuOpen
+                            ? 'opacity-100 scale-100'
+                            : 'opacity-0 group-hover/bubble:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 max-sm:opacity-70 hover:opacity-100'
+                        } ${
+                          isMe
+                            ? 'text-white/80 hover:text-white hover:bg-white/20'
+                            : 'text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE]'
+                        }`}
+                      >
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
+                    {/* Quoted Reply Header */}
+                    {msg.replyTo && (
+                      <div
+                        className={`mb-2 px-2.5 py-1.5 rounded-lg border-l-4 text-xs select-none ${
+                          isMe
+                            ? 'bg-black/15 border-white/80 text-white/90'
+                            : 'bg-[#EDE9FE]/60 border-[#7C5CFC] text-[#5A507A]'
+                        }`}
+                      >
+                        <span className="font-semibold block text-[11px] mb-0.5">
+                          {msg.replyTo.senderName || 'Replied message'}
+                        </span>
+                        <span className="truncate block opacity-85">
+                          {msg.replyTo.text || 'Attachment'}
+                        </span>
+                      </div>
+                    )}
+
                     {/* Image Attachment Preview */}
                     {msg.image && (
                       <button
@@ -468,14 +681,14 @@ export default function ChatWindow({
 
                     {/* Text Content */}
                     {msg.text && (
-                      <p className="whitespace-pre-wrap break-words leading-relaxed select-text">
+                      <p className="whitespace-pre-wrap break-words leading-relaxed select-text pr-5">
                         {msg.text}
                       </p>
                     )}
 
                     {/* Metadata & Status Badges */}
                     <div
-                      className={`flex items-center justify-end gap-1 mt-1 text-[10px] select-none ${
+                      className={`flex items-center justify-end gap-1.5 mt-1 text-[10px] select-none ${
                         isMe
                           ? msg.failed
                             ? 'text-[#EF4444]'
@@ -483,6 +696,18 @@ export default function ChatWindow({
                           : 'text-[#797196]'
                       }`}
                     >
+                      {isPinned && (
+                        <span title="Pinned message" className="inline-flex items-center opacity-75">
+                          <Pin className="w-3 h-3 text-current rotate-45" />
+                        </span>
+                      )}
+
+                      {isStarred && (
+                        <span title="Starred message" className="inline-flex items-center">
+                          <Star className="w-3 h-3 fill-[#EAB308] text-[#EAB308]" />
+                        </span>
+                      )}
+
                       <span>
                         {new Date(msg.createdAt).toLocaleTimeString([], {
                           hour: '2-digit',
@@ -579,6 +804,33 @@ export default function ChatWindow({
             className="p-1.5 text-[#797196] hover:text-[#EF4444] rounded-lg transition-colors"
             title="Cancel video attachment"
             aria-label="Cancel video attachment"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Selected Reply Preview Staging */}
+      {replyingTo && (
+        <div className="px-4 py-2 bg-[#F8F7FF] border-t border-[#E8E3FA] flex items-center justify-between animate-fadeIn">
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="w-1 self-stretch bg-[#7C5CFC] rounded-full min-h-[28px]" />
+            <div className="text-xs truncate">
+              <span className="font-semibold text-[#7C5CFC] flex items-center gap-1.5">
+                <Reply className="w-3.5 h-3.5" />
+                Replying to {replyingTo.senderId === currentUser.id ? 'yourself' : contact.name}
+              </span>
+              <span className="text-[#797196] truncate block">
+                {replyingTo.text || (replyingTo.image ? '📷 Image' : replyingTo.video ? '🎥 Video' : 'Attachment')}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setReplyingTo(null)}
+            className="p-1.5 text-[#797196] hover:text-[#EF4444] rounded-lg transition-colors"
+            title="Cancel reply"
+            aria-label="Cancel reply"
           >
             <X className="w-4 h-4" />
           </button>

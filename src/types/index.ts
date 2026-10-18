@@ -36,6 +36,13 @@ export interface Message {
   read: boolean;
   reactions?: Reaction[];
   idempotencyKey?: string;       // Client-generated deduplication key
+  pinned?: boolean;
+  starred?: boolean;
+  replyTo?: {
+    id: string;
+    text?: string;
+    senderName?: string;
+  };
 }
 
 export interface DatabaseSchema {

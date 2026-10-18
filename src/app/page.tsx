@@ -366,6 +366,7 @@ export default function HomePage() {
     text: string,
     image?: string,
     video?: string,
+    replyTo?: Message['replyTo'],
     existingIdempotencyKey?: string,
     existingTempId?: string
   ): Promise<boolean> => {
@@ -383,6 +384,7 @@ export default function HomePage() {
       text: trimmedText,
       image,
       video,
+      replyTo,
       createdAt: new Date().toISOString(),
       read: false,
       isOptimistic: true,
@@ -408,6 +410,7 @@ export default function HomePage() {
           text: trimmedText || undefined,
           image: image || undefined,
           video: video || undefined,
+          replyTo: replyTo || undefined,
           idempotencyKey,
         }),
       });
@@ -446,7 +449,7 @@ export default function HomePage() {
   // Retry sending failed message using its original idempotencyKey to prevent duplicate persistence
   const handleRetryMessage = async (failedMsgId: string, text: string, image?: string, video?: string) => {
     const failedItem = messages.find((m) => m.id === failedMsgId);
-    await handleSendMessage(text, image, video, failedItem?.idempotencyKey, failedMsgId);
+    await handleSendMessage(text, image, video, failedItem?.replyTo, failedItem?.idempotencyKey, failedMsgId);
   };
 
   // Handle toggling reaction on a message
@@ -498,6 +501,28 @@ export default function HomePage() {
 
       // Reset visible messages and refresh contacts list preview
       setMessages([]);
+      fetchUsers();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // Handle deleting an individual message
+  const handleDeleteMessage = async (messageId: string): Promise<boolean> => {
+    if (!currentUser) return false;
+
+    try {
+      const res = await fetch(`/api/messages?messageId=${encodeURIComponent(messageId)}`, {
+        method: 'DELETE',
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return false;
+      }
+
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
       fetchUsers();
       return true;
     } catch {
@@ -600,6 +625,7 @@ export default function HomePage() {
                 onSendMessage={handleSendMessage}
                 onRetryMessage={handleRetryMessage}
                 onReactToMessage={handleReactToMessage}
+                onDeleteMessage={handleDeleteMessage}
                 onClearChat={handleClearChat}
                 onBack={() => setMobileView('contacts')}
                 loading={messagesLoading}

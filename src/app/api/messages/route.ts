@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getConversationMessages, createMessage } from '@/lib/db';
+import { getConversationMessages, createMessage, deleteMessage } from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { validateMessageContent, validateIdempotencyKey, parseJsonBody } from '@/lib/validation';
 import { handleApiError, ForbiddenError, ValidationError } from '@/lib/errors';
@@ -45,10 +45,11 @@ export async function POST(request: Request) {
       text?: string;
       image?: string;
       video?: string;
+      replyTo?: { id: string; text?: string; senderName?: string };
       idempotencyKey?: string;
     }>(request);
 
-    const { receiverId, text, image, video, idempotencyKey } = body;
+    const { receiverId, text, image, video, replyTo, idempotencyKey } = body;
     let { senderId } = body;
 
     if (!receiverId || typeof receiverId !== 'string') {
@@ -78,10 +79,40 @@ export async function POST(request: Request) {
       text: validatedText,
       image: validatedImage,
       video: validatedVideo,
+      replyTo,
       idempotencyKey: validatedIdempotencyKey,
     });
 
     return NextResponse.json({ success: true, message });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+// DELETE /api/messages?messageId=... deletes a single message
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    let messageId = searchParams.get('messageId');
+
+    if (!messageId) {
+      const body = await parseJsonBody<{ messageId?: string }>(request).catch(() => ({ messageId: undefined } as { messageId?: string }));
+      messageId = body.messageId || null;
+    }
+
+    if (!messageId || typeof messageId !== 'string') {
+      throw new ValidationError('messageId is required.');
+    }
+
+    // Verify authenticated user
+    const authUser = await getAuthenticatedUser(request);
+    if (!authUser) {
+      throw new ForbiddenError('Authentication required to delete messages.');
+    }
+
+    const deleted = await deleteMessage(messageId);
+
+    return NextResponse.json({ success: true, deleted });
   } catch (error) {
     return handleApiError(error);
   }
