@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { User } from '@/types';
 import { Card, Badge, Avatar, Button, Input, Spinner } from '@/components/ui';
+import { useTheme } from '@/context/ThemeContext';
 
 export interface AdminDashboardProps {
   onClose: () => void;
@@ -33,6 +34,8 @@ export default function AdminDashboard({
   onClose,
   onSelectUserForChat,
 }: AdminDashboardProps) {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
   const [activeTab, setActiveTab] = useState<'overview' | 'create' | 'manage'>('overview');
   const [users, setUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -312,37 +315,70 @@ export default function AdminDashboard({
       aria-labelledby="admin-dashboard-title"
       className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 animate-fadeIn"
     >
-      <div className="bg-[#F8F7FF] border border-[#E8E3FA] rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-[#1E1B2E]">
+      <div
+        className={`rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden transition-colors border ${
+          isDark
+            ? 'bg-[#111b21] border-[#222d34] text-[#e9edef]'
+            : 'bg-[#F8F7FF] border-[#E8E3FA] text-[#1E1B2E]'
+        }`}
+      >
         {/* Header */}
-        <header className="h-16 px-6 bg-white border-b border-[#E8E3FA] flex items-center justify-between flex-shrink-0 shadow-sm">
+        <header
+          className={`h-16 px-6 border-b flex items-center justify-between flex-shrink-0 shadow-sm transition-colors ${
+            isDark ? 'bg-[#202c33] border-[#222d34]' : 'bg-white border-[#E8E3FA]'
+          }`}
+        >
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-[#EDE9FE] border border-[#D5CCF5] flex items-center justify-center text-[#7C5CFC]">
+            <div
+              className={`w-9 h-9 rounded-xl border flex items-center justify-center ${
+                isDark
+                  ? 'bg-[#111b21] border-[#2a3942] text-[#00a884]'
+                  : 'bg-[#EDE9FE] border-[#D5CCF5] text-[#7C5CFC]'
+              }`}
+            >
               <Shield className="w-5 h-5" />
             </div>
             <div>
-              <h2 id="admin-dashboard-title" className="text-base font-bold text-[#1E1B2E]">
+              <h2
+                id="admin-dashboard-title"
+                className={`text-base font-bold ${isDark ? 'text-[#e9edef]' : 'text-[#1E1B2E]'}`}
+              >
                 Admin Center
               </h2>
-              <p className="text-[11px] text-[#797196]">User Management & System Controls</p>
+              <p className={`text-[11px] ${isDark ? 'text-[#8696a0]' : 'text-[#797196]'}`}>
+                User Management & System Controls
+              </p>
             </div>
           </div>
           <button
             onClick={onClose}
             title="Close Admin Center"
             aria-label="Close Admin Center"
-            className="p-2 text-[#797196] hover:text-[#1E1B2E] hover:bg-[#EDE9FE]/50 rounded-xl transition-colors"
+            className={`p-2 rounded-xl transition-colors ${
+              isDark
+                ? 'text-[#8696a0] hover:text-[#e9edef] hover:bg-[#2a3942]'
+                : 'text-[#797196] hover:text-[#1E1B2E] hover:bg-[#EDE9FE]/50'
+            }`}
           >
             <X className="w-5 h-5" />
           </button>
         </header>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-[#E8E3FA] bg-white px-6 gap-2 flex-shrink-0">
+        <div
+          className={`flex border-b px-6 gap-2 flex-shrink-0 transition-colors ${
+            isDark ? 'bg-[#111b21] border-[#222d34]' : 'bg-white border-[#E8E3FA]'
+          }`}
+        >
           <button
             onClick={() => setActiveTab('overview')}
             className={`py-3 px-3 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all ${
               activeTab === 'overview'
-                ? 'border-[#7C5CFC] text-[#7C5CFC]'
+                ? isDark
+                  ? 'border-[#00a884] text-[#00a884]'
+                  : 'border-[#7C5CFC] text-[#7C5CFC]'
+                : isDark
+                ? 'border-transparent text-[#8696a0] hover:text-[#e9edef]'
                 : 'border-transparent text-[#797196] hover:text-[#1E1B2E]'
             }`}
           >
@@ -353,7 +389,11 @@ export default function AdminDashboard({
             onClick={() => setActiveTab('manage')}
             className={`py-3 px-3 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all ${
               activeTab === 'manage'
-                ? 'border-[#7C5CFC] text-[#7C5CFC]'
+                ? isDark
+                  ? 'border-[#00a884] text-[#00a884]'
+                  : 'border-[#7C5CFC] text-[#7C5CFC]'
+                : isDark
+                ? 'border-transparent text-[#8696a0] hover:text-[#e9edef]'
                 : 'border-transparent text-[#797196] hover:text-[#1E1B2E]'
             }`}
           >
@@ -364,7 +404,11 @@ export default function AdminDashboard({
             onClick={() => setActiveTab('create')}
             className={`py-3 px-3 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all ${
               activeTab === 'create'
-                ? 'border-[#7C5CFC] text-[#7C5CFC]'
+                ? isDark
+                  ? 'border-[#00a884] text-[#00a884]'
+                  : 'border-[#7C5CFC] text-[#7C5CFC]'
+                : isDark
+                ? 'border-transparent text-[#8696a0] hover:text-[#e9edef]'
                 : 'border-transparent text-[#797196] hover:text-[#1E1B2E]'
             }`}
           >
@@ -392,31 +436,77 @@ export default function AdminDashboard({
         )}
 
         {/* Main Tab Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className={`flex-1 overflow-y-auto p-6 space-y-6 ${isDark ? 'bg-[#0c1317]' : ''}`}>
           {/* TAB 1: OVERVIEW & SYSTEM METRICS */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <Card variant="white" className="p-4">
-                  <span className="text-[11px] font-semibold text-[#797196] uppercase tracking-wider">
+                <Card
+                  variant="white"
+                  className={`p-4 ${isDark ? '!bg-[#111b21] !border-[#222d34]' : ''}`}
+                >
+                  <span
+                    className={`text-[11px] font-semibold uppercase tracking-wider ${
+                      isDark ? 'text-[#8696a0]' : 'text-[#797196]'
+                    }`}
+                  >
                     Total Users
                   </span>
-                  <p className="text-2xl font-bold text-[#1E1B2E] mt-1">{metrics.total}</p>
+                  <p
+                    className={`text-2xl font-bold mt-1 ${
+                      isDark ? 'text-[#e9edef]' : 'text-[#1E1B2E]'
+                    }`}
+                  >
+                    {metrics.total}
+                  </p>
                 </Card>
-                <Card variant="white" className="p-4">
-                  <span className="text-[11px] font-semibold text-[#797196] uppercase tracking-wider">
+                <Card
+                  variant="white"
+                  className={`p-4 ${isDark ? '!bg-[#111b21] !border-[#222d34]' : ''}`}
+                >
+                  <span
+                    className={`text-[11px] font-semibold uppercase tracking-wider ${
+                      isDark ? 'text-[#8696a0]' : 'text-[#797196]'
+                    }`}
+                  >
                     Regular Users
                   </span>
-                  <p className="text-2xl font-bold text-[#7C5CFC] mt-1">{metrics.regulars}</p>
+                  <p
+                    className={`text-2xl font-bold mt-1 ${
+                      isDark ? 'text-[#00a884]' : 'text-[#7C5CFC]'
+                    }`}
+                  >
+                    {metrics.regulars}
+                  </p>
                 </Card>
-                <Card variant="white" className="p-4">
-                  <span className="text-[11px] font-semibold text-[#797196] uppercase tracking-wider">
+                <Card
+                  variant="white"
+                  className={`p-4 ${isDark ? '!bg-[#111b21] !border-[#222d34]' : ''}`}
+                >
+                  <span
+                    className={`text-[11px] font-semibold uppercase tracking-wider ${
+                      isDark ? 'text-[#8696a0]' : 'text-[#797196]'
+                    }`}
+                  >
                     Administrators
                   </span>
-                  <p className="text-2xl font-bold text-[#4C3A8C] mt-1">{metrics.admins}</p>
+                  <p
+                    className={`text-2xl font-bold mt-1 ${
+                      isDark ? 'text-[#53bdeb]' : 'text-[#4C3A8C]'
+                    }`}
+                  >
+                    {metrics.admins}
+                  </p>
                 </Card>
-                <Card variant="white" className="p-4">
-                  <span className="text-[11px] font-semibold text-[#797196] uppercase tracking-wider">
+                <Card
+                  variant="white"
+                  className={`p-4 ${isDark ? '!bg-[#111b21] !border-[#222d34]' : ''}`}
+                >
+                  <span
+                    className={`text-[11px] font-semibold uppercase tracking-wider ${
+                      isDark ? 'text-[#8696a0]' : 'text-[#797196]'
+                    }`}
+                  >
                     Active / Online
                   </span>
                   <p className="text-2xl font-bold text-[#10B981] mt-1">{metrics.online}</p>
@@ -424,14 +514,27 @@ export default function AdminDashboard({
               </div>
 
               {/* Maintenance & Dangerous Zone Card */}
-              <Card variant="white" className="p-5 border-l-4 border-l-[#EF4444]">
+              <Card
+                variant="white"
+                className={`p-5 border-l-4 border-l-[#EF4444] ${
+                  isDark ? '!bg-[#111b21] !border-[#222d34] !border-l-[#EF4444]' : ''
+                }`}
+              >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
-                    <h3 className="text-sm font-bold text-[#1E1B2E] flex items-center gap-1.5">
+                    <h3
+                      className={`text-sm font-bold flex items-center gap-1.5 ${
+                        isDark ? 'text-[#e9edef]' : 'text-[#1E1B2E]'
+                      }`}
+                    >
                       <AlertTriangle className="w-4 h-4 text-[#EF4444]" />
                       <span>Demo Database Reset</span>
                     </h3>
-                    <p className="text-xs text-[#797196] mt-1 leading-relaxed max-w-lg">
+                    <p
+                      className={`text-xs mt-1 leading-relaxed max-w-lg ${
+                        isDark ? 'text-[#8696a0]' : 'text-[#797196]'
+                      }`}
+                    >
                       Deletes all conversations, attachments, reactions, and non-admin user accounts. Retains the primary root administrator account.
                     </p>
                   </div>
@@ -455,20 +558,32 @@ export default function AdminDashboard({
               {/* Search & Filter Toolbar */}
               <div className="flex flex-col sm:flex-row items-center gap-3">
                 <div className="relative flex-1 w-full">
-                  <Search className="w-4 h-4 text-[#797196] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Search
+                    className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none ${
+                      isDark ? 'text-[#8696a0]' : 'text-[#797196]'
+                    }`}
+                  />
                   <input
                     type="text"
                     placeholder="Search by name, ID, or passcode..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-white border border-[#DCD6F7] rounded-xl text-xs text-[#1E1B2E] focus:outline-none focus:border-[#7C5CFC]"
+                    className={`w-full pl-10 pr-4 py-2 rounded-xl text-xs focus:outline-none transition-colors border ${
+                      isDark
+                        ? 'bg-[#202c33] border-[#2a3942] text-[#e9edef] placeholder-[#8696a0] focus:border-[#00a884]'
+                        : 'bg-white border-[#DCD6F7] text-[#1E1B2E] focus:border-[#7C5CFC]'
+                    }`}
                   />
                 </div>
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                   <select
                     value={roleFilter}
                     onChange={(e) => setRoleFilter(e.target.value as 'all' | 'admin' | 'user')}
-                    className="px-3 py-2 bg-white border border-[#DCD6F7] rounded-xl text-xs text-[#1E1B2E] focus:outline-none focus:border-[#7C5CFC]"
+                    className={`px-3 py-2 rounded-xl text-xs focus:outline-none transition-colors border ${
+                      isDark
+                        ? 'bg-[#202c33] border-[#2a3942] text-[#e9edef] focus:border-[#00a884]'
+                        : 'bg-white border-[#DCD6F7] text-[#1E1B2E] focus:border-[#7C5CFC]'
+                    }`}
                   >
                     <option value="all">All Roles</option>
                     <option value="user">Users Only</option>
@@ -479,7 +594,11 @@ export default function AdminDashboard({
                     size="sm"
                     onClick={fetchUsers}
                     disabled={loadingUsers}
-                    className="gap-1 flex-shrink-0"
+                    className={`gap-1 flex-shrink-0 ${
+                      isDark
+                        ? '!bg-[#202c33] !border-[#2a3942] !text-[#e9edef] hover:!bg-[#2a3942]'
+                        : ''
+                    }`}
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${loadingUsers ? 'animate-spin' : ''}`} />
                     <span>Refresh</span>
@@ -489,10 +608,20 @@ export default function AdminDashboard({
 
               {/* User Account List */}
               {filteredUsers.length === 0 ? (
-                <div className="p-8 text-center bg-white border border-[#E8E3FA] rounded-2xl text-[#797196]">
-                  <Users className="w-8 h-8 mx-auto mb-2 text-[#8E82B2]" />
-                  <p className="text-xs font-semibold text-[#1E1B2E]">No matching accounts found</p>
-                  <p className="text-[11px] mt-0.5">Try adjusting your search criteria or create a new user account.</p>
+                <div
+                  className={`p-8 text-center rounded-2xl border ${
+                    isDark
+                      ? 'bg-[#111b21] border-[#222d34] text-[#8696a0]'
+                      : 'bg-white border-[#E8E3FA] text-[#797196]'
+                  }`}
+                >
+                  <Users className={`w-8 h-8 mx-auto mb-2 ${isDark ? 'text-[#8696a0]' : 'text-[#8E82B2]'}`} />
+                  <p className={`text-xs font-semibold ${isDark ? 'text-[#e9edef]' : 'text-[#1E1B2E]'}`}>
+                    No matching accounts found
+                  </p>
+                  <p className="text-[11px] mt-0.5">
+                    Try adjusting your search criteria or create a new user account.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2.5">
@@ -500,7 +629,11 @@ export default function AdminDashboard({
                     <Card
                       key={u.id}
                       variant="white"
-                      className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm hover:border-[#D5CCF5] transition-all"
+                      className={`p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm transition-all ${
+                        isDark
+                          ? '!bg-[#111b21] !border-[#222d34] hover:!border-[#00a884]/60'
+                          : 'hover:border-[#D5CCF5]'
+                      }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <Avatar
@@ -511,19 +644,55 @@ export default function AdminDashboard({
                         />
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-[#1E1B2E] truncate">{u.name}</span>
+                            <span
+                              className={`text-sm font-bold truncate ${
+                                isDark ? 'text-[#e9edef]' : 'text-[#1E1B2E]'
+                              }`}
+                            >
+                              {u.name}
+                            </span>
                             {u.role === 'admin' ? (
-                              <Badge variant="purple" size="sm">Admin</Badge>
+                              <Badge
+                                variant="purple"
+                                size="sm"
+                                className="gap-1 !bg-[#00a884]/20 !text-[#00a884] !border-[#00a884]/30"
+                              >
+                                Admin
+                              </Badge>
                             ) : (
-                              <Badge variant="neutral" size="sm">User</Badge>
+                              <Badge
+                                variant="neutral"
+                                size="sm"
+                                className={`gap-1 ${
+                                  isDark ? '!bg-[#202c33] !text-[#8696a0] !border-[#2a3942]' : ''
+                                }`}
+                              >
+                                User
+                              </Badge>
                             )}
                           </div>
-                          <div className="text-xs text-[#797196] flex items-center gap-3 mt-0.5">
-                            <span className="font-mono text-[#1E1B2E] font-medium">Passcode: {u.code}</span>
-                            <span className="text-[10px] text-[#8E82B2]">ID: {u.id}</span>
+                          <div
+                            className={`text-xs flex items-center gap-3 mt-0.5 ${
+                              isDark ? 'text-[#8696a0]' : 'text-[#797196]'
+                            }`}
+                          >
+                            <span
+                              className={`font-mono font-medium ${
+                                isDark ? 'text-[#00a884]' : 'text-[#1E1B2E]'
+                              }`}
+                            >
+                              Passcode: {u.code}
+                            </span>
+                            <span className={`text-[10px] ${isDark ? 'text-[#8696a0]' : 'text-[#8E82B2]'}`}>
+                              ID: {u.id}
+                            </span>
                           </div>
                           {u.notes && (
-                            <p className="text-[11px] text-[#4C3A8C] mt-0.5 italic truncate max-w-sm">
+                            <p
+                              className={`text-[11px] mt-0.5 italic truncate max-w-sm ${
+                                isDark ? 'text-[#00a884]/80' : 'text-[#4C3A8C]'
+                              }`}
+                            >
                               Note: {u.notes}
                             </p>
                           )}
@@ -539,7 +708,11 @@ export default function AdminDashboard({
                           }}
                           title="Open conversation"
                           aria-label={`Chat with ${u.name}`}
-                          className="p-2 text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE]/50 rounded-xl transition-colors"
+                          className={`p-2 rounded-xl transition-colors ${
+                            isDark
+                              ? 'text-[#8696a0] hover:text-[#00a884] hover:bg-[#202c33]'
+                              : 'text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE]/50'
+                          }`}
                         >
                           <MessageSquare className="w-4 h-4" />
                         </button>
@@ -547,7 +720,11 @@ export default function AdminDashboard({
                           onClick={() => copyShareLink(u.code)}
                           title="Copy direct share link"
                           aria-label={`Copy link for ${u.name}`}
-                          className="p-2 text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE]/50 rounded-xl transition-colors"
+                          className={`p-2 rounded-xl transition-colors ${
+                            isDark
+                              ? 'text-[#8696a0] hover:text-[#00a884] hover:bg-[#202c33]'
+                              : 'text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE]/50'
+                          }`}
                         >
                           <Copy className="w-4 h-4" />
                         </button>
@@ -555,7 +732,11 @@ export default function AdminDashboard({
                           onClick={() => shareViaWhatsApp(u)}
                           title="Share via WhatsApp"
                           aria-label={`Share ${u.name} on WhatsApp`}
-                          className="p-2 text-[#797196] hover:text-[#10B981] hover:bg-[#ECFDF5] rounded-xl transition-colors"
+                          className={`p-2 rounded-xl transition-colors ${
+                            isDark
+                              ? 'text-[#8696a0] hover:text-[#25d366] hover:bg-[#202c33]'
+                              : 'text-[#797196] hover:text-[#10B981] hover:bg-[#ECFDF5]'
+                          }`}
                         >
                           <ExternalLink className="w-4 h-4" />
                         </button>
@@ -563,7 +744,11 @@ export default function AdminDashboard({
                           onClick={() => startEditUser(u)}
                           title="Edit user account"
                           aria-label={`Edit ${u.name}`}
-                          className="p-2 text-[#797196] hover:text-[#4C3A8C] hover:bg-[#EDE9FE]/50 rounded-xl transition-colors"
+                          className={`p-2 rounded-xl transition-colors ${
+                            isDark
+                              ? 'text-[#8696a0] hover:text-[#00a884] hover:bg-[#202c33]'
+                              : 'text-[#797196] hover:text-[#4C3A8C] hover:bg-[#EDE9FE]/50'
+                          }`}
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
@@ -572,7 +757,11 @@ export default function AdminDashboard({
                             onClick={() => setUserToDelete(u)}
                             title="Delete user account"
                             aria-label={`Delete ${u.name}`}
-                            className="p-2 text-[#797196] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-xl transition-colors"
+                            className={`p-2 rounded-xl transition-colors ${
+                              isDark
+                                ? 'text-[#8696a0] hover:text-[#EF4444] hover:bg-[#FEF2F2]/10'
+                                : 'text-[#797196] hover:text-[#EF4444] hover:bg-[#FEF2F2]'
+                            }`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -589,28 +778,44 @@ export default function AdminDashboard({
           {activeTab === 'create' && (
             <div className="space-y-6 max-w-xl mx-auto">
               {createdUser && (
-                <Card variant="lavender" className="p-4 border-[#7C5CFC]/40 animate-fadeIn">
+                <Card
+                  variant="lavender"
+                  className={`p-4 animate-fadeIn ${
+                    isDark
+                      ? '!bg-[#202c33] !border-[#00a884]/40 text-[#e9edef]'
+                      : 'border-[#7C5CFC]/40'
+                  }`}
+                >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-[#4C3A8C] uppercase tracking-wider flex items-center gap-1.5">
+                    <span
+                      className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
+                        isDark ? 'text-[#00a884]' : 'text-[#4C3A8C]'
+                      }`}
+                    >
                       <Check className="w-4 h-4 text-[#10B981]" />
                       <span>Account Created Successfully</span>
                     </span>
                     <button
                       onClick={() => setCreatedUser(null)}
-                      className="text-xs text-[#797196] hover:text-[#1E1B2E]"
+                      className={`text-xs ${
+                        isDark ? 'text-[#8696a0] hover:text-[#e9edef]' : 'text-[#797196] hover:text-[#1E1B2E]'
+                      }`}
                     >
                       Dismiss
                     </button>
                   </div>
-                  <p className="text-sm font-semibold text-[#1E1B2E]">
-                    {createdUser.avatar} {createdUser.name} — Passcode: <span className="font-mono text-[#7C5CFC]">{createdUser.code}</span>
+                  <p className={`text-sm font-semibold ${isDark ? 'text-[#e9edef]' : 'text-[#1E1B2E]'}`}>
+                    {createdUser.avatar} {createdUser.name} — Passcode:{' '}
+                    <span className={`font-mono ${isDark ? 'text-[#00a884]' : 'text-[#7C5CFC]'}`}>
+                      {createdUser.code}
+                    </span>
                   </p>
                   <div className="mt-3 flex gap-2">
                     <Button
                       variant="primary"
                       size="sm"
                       onClick={() => copyShareLink(createdUser.code)}
-                      className="gap-1.5"
+                      className="gap-1.5 !bg-[#00a884] hover:!bg-[#008f6f] !text-white"
                     >
                       {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>{copiedLink ? 'Copied Link!' : 'Copy Direct Access Link'}</span>
@@ -619,7 +824,9 @@ export default function AdminDashboard({
                       variant="outline"
                       size="sm"
                       onClick={() => shareViaWhatsApp(createdUser)}
-                      className="gap-1.5"
+                      className={`gap-1.5 ${
+                        isDark ? '!bg-[#202c33] !border-[#2a3942] !text-[#e9edef] hover:!bg-[#2a3942]' : ''
+                      }`}
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
                       <span>WhatsApp Share</span>
@@ -648,7 +855,11 @@ export default function AdminDashboard({
 
               <form onSubmit={handleCreateUser} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-[#4B4562] mb-1.5">
+                  <label
+                    className={`block text-xs font-semibold mb-1.5 ${
+                      isDark ? 'text-[#8696a0]' : 'text-[#4B4562]'
+                    }`}
+                  >
                     Display Name
                   </label>
                   <Input
@@ -657,18 +868,29 @@ export default function AdminDashboard({
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Sarah Connor"
                     required
+                    className={
+                      isDark
+                        ? '!bg-[#202c33] !border-[#2a3942] !text-[#e9edef] placeholder:!text-[#8696a0] focus:!border-[#00a884]'
+                        : ''
+                    }
                   />
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-semibold text-[#4B4562]">
+                    <label
+                      className={`block text-xs font-semibold ${
+                        isDark ? 'text-[#8696a0]' : 'text-[#4B4562]'
+                      }`}
+                    >
                       Access Passcode (Optional — auto-generated if left blank)
                     </label>
                     <button
                       type="button"
                       onClick={generateRandomCode}
-                      className="text-xs text-[#7C5CFC] hover:text-[#6C4AE8] font-semibold flex items-center gap-1"
+                      className={`text-xs font-semibold flex items-center gap-1 ${
+                        isDark ? 'text-[#00a884] hover:text-[#25d366]' : 'text-[#7C5CFC] hover:text-[#6C4AE8]'
+                      }`}
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                       <span>Generate 4 Digits</span>
@@ -679,34 +901,50 @@ export default function AdminDashboard({
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
                     placeholder="e.g. 4829"
-                    className="font-mono"
+                    className={`font-mono ${
+                      isDark
+                        ? '!bg-[#202c33] !border-[#2a3942] !text-[#e9edef] placeholder:!text-[#8696a0] focus:!border-[#00a884]'
+                        : ''
+                    }`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#4B4562] mb-1.5">
+                  <label
+                    className={`block text-xs font-semibold mb-1.5 ${
+                      isDark ? 'text-[#8696a0]' : 'text-[#4B4562]'
+                    }`}
+                  >
                     Account Role
                   </label>
                   <div className="flex gap-3">
-                    <label className="flex items-center gap-2 text-xs text-[#1E1B2E] font-medium cursor-pointer">
+                    <label
+                      className={`flex items-center gap-2 text-xs font-medium cursor-pointer ${
+                        isDark ? 'text-[#e9edef]' : 'text-[#1E1B2E]'
+                      }`}
+                    >
                       <input
                         type="radio"
                         name="createRole"
                         value="user"
                         checked={role === 'user'}
                         onChange={() => setRole('user')}
-                        className="accent-[#7C5CFC]"
+                        className="accent-[#00a884]"
                       />
                       <span>Regular User</span>
                     </label>
-                    <label className="flex items-center gap-2 text-xs text-[#1E1B2E] font-medium cursor-pointer">
+                    <label
+                      className={`flex items-center gap-2 text-xs font-medium cursor-pointer ${
+                        isDark ? 'text-[#e9edef]' : 'text-[#1E1B2E]'
+                      }`}
+                    >
                       <input
                         type="radio"
                         name="createRole"
                         value="admin"
                         checked={role === 'admin'}
                         onChange={() => setRole('admin')}
-                        className="accent-[#7C5CFC]"
+                        className="accent-[#00a884]"
                       />
                       <span>Administrator</span>
                     </label>
@@ -714,7 +952,11 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#4B4562] mb-2">
+                  <label
+                    className={`block text-xs font-semibold mb-2 ${
+                      isDark ? 'text-[#8696a0]' : 'text-[#4B4562]'
+                    }`}
+                  >
                     Avatar Emoji
                   </label>
                   <div className="grid grid-cols-6 gap-2">
@@ -725,7 +967,11 @@ export default function AdminDashboard({
                         onClick={() => setAvatar(em)}
                         className={`p-2 rounded-xl text-xl border transition-all ${
                           avatar === em
-                            ? 'bg-[#EDE9FE] border-[#7C5CFC] shadow-sm'
+                            ? isDark
+                              ? 'bg-[#202c33] border-[#00a884] ring-2 ring-[#00a884]/30'
+                              : 'bg-[#EDE9FE] border-[#7C5CFC] shadow-sm'
+                            : isDark
+                            ? 'bg-[#111b21] border-[#2a3942] hover:bg-[#202c33]'
                             : 'bg-white border-[#E8E3FA] hover:bg-[#F8F7FF]'
                         }`}
                       >
@@ -736,7 +982,11 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#4B4562] mb-1.5">
+                  <label
+                    className={`block text-xs font-semibold mb-1.5 ${
+                      isDark ? 'text-[#8696a0]' : 'text-[#4B4562]'
+                    }`}
+                  >
                     Internal Admin Notes (Optional)
                   </label>
                   <Input
@@ -744,6 +994,11 @@ export default function AdminDashboard({
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="e.g. VIP Client, Onboarding batch #1"
+                    className={
+                      isDark
+                        ? '!bg-[#202c33] !border-[#2a3942] !text-[#e9edef] placeholder:!text-[#8696a0] focus:!border-[#00a884]'
+                        : ''
+                    }
                   />
                 </div>
 
@@ -751,7 +1006,7 @@ export default function AdminDashboard({
                   type="submit"
                   disabled={creating}
                   isLoading={creating}
-                  className="w-full gap-2"
+                  className="w-full gap-2 !bg-[#00a884] hover:!bg-[#008f6f] !text-white"
                 >
                   {creating ? <Spinner size="sm" className="text-white" /> : <UserPlus className="w-4 h-4" />}
                   <span>Save & Generate Account</span>
@@ -770,8 +1025,16 @@ export default function AdminDashboard({
           aria-labelledby="edit-user-title"
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn"
         >
-          <Card variant="white" className="p-6 max-w-md w-full shadow-2xl">
-            <h3 id="edit-user-title" className="text-base font-bold text-[#1E1B2E] mb-4">
+          <Card
+            variant="white"
+            className={`p-6 max-w-md w-full shadow-2xl ${
+              isDark ? '!bg-[#111b21] !border-[#222d34] text-[#e9edef]' : ''
+            }`}
+          >
+            <h3
+              id="edit-user-title"
+              className={`text-base font-bold mb-4 ${isDark ? 'text-[#e9edef]' : 'text-[#1E1B2E]'}`}
+            >
               Edit Account: {editingUser.name}
             </h3>
 
@@ -783,7 +1046,11 @@ export default function AdminDashboard({
 
             <form onSubmit={handleSaveEdit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-[#4B4562] mb-1">
+                <label
+                  className={`block text-xs font-semibold mb-1 ${
+                    isDark ? 'text-[#8696a0]' : 'text-[#4B4562]'
+                  }`}
+                >
                   Display Name
                 </label>
                 <Input
@@ -791,31 +1058,52 @@ export default function AdminDashboard({
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   required
+                  className={
+                    isDark
+                      ? '!bg-[#202c33] !border-[#2a3942] !text-[#e9edef] focus:!border-[#00a884]'
+                      : ''
+                  }
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#4B4562] mb-1">
+                <label
+                  className={`block text-xs font-semibold mb-1 ${
+                    isDark ? 'text-[#8696a0]' : 'text-[#4B4562]'
+                  }`}
+                >
                   Access Passcode
                 </label>
                 <Input
                   type="text"
                   value={editCode}
                   onChange={(e) => setEditCode(e.target.value)}
-                  className="font-mono"
+                  className={`font-mono ${
+                    isDark
+                      ? '!bg-[#202c33] !border-[#2a3942] !text-[#e9edef] focus:!border-[#00a884]'
+                      : ''
+                  }`}
                   required
                 />
               </div>
 
               {editingUser.id !== 'admin_root' && (
                 <div>
-                  <label className="block text-xs font-semibold text-[#4B4562] mb-1">
+                  <label
+                    className={`block text-xs font-semibold mb-1 ${
+                      isDark ? 'text-[#8696a0]' : 'text-[#4B4562]'
+                    }`}
+                  >
                     Role
                   </label>
                   <select
                     value={editRole}
                     onChange={(e) => setEditRole(e.target.value as 'user' | 'admin')}
-                    className="w-full py-2 px-3 bg-white border border-[#DCD6F7] rounded-xl text-xs text-[#1E1B2E] focus:outline-none focus:border-[#7C5CFC]"
+                    className={`w-full py-2 px-3 rounded-xl text-xs focus:outline-none border transition-colors ${
+                      isDark
+                        ? 'bg-[#202c33] border-[#2a3942] text-[#e9edef] focus:border-[#00a884]'
+                        : 'bg-white border-[#DCD6F7] text-[#1E1B2E] focus:border-[#7C5CFC]'
+                    }`}
                   >
                     <option value="user">Regular User</option>
                     <option value="admin">Administrator</option>
@@ -824,7 +1112,11 @@ export default function AdminDashboard({
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-[#4B4562] mb-1">
+                <label
+                  className={`block text-xs font-semibold mb-1 ${
+                    isDark ? 'text-[#8696a0]' : 'text-[#4B4562]'
+                  }`}
+                >
                   Internal Notes
                 </label>
                 <Input
@@ -832,6 +1124,11 @@ export default function AdminDashboard({
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
                   placeholder="Notes..."
+                  className={
+                    isDark
+                      ? '!bg-[#202c33] !border-[#2a3942] !text-[#e9edef] focus:!border-[#00a884]'
+                      : ''
+                  }
                 />
               </div>
 
@@ -841,6 +1138,7 @@ export default function AdminDashboard({
                   variant="outline"
                   size="sm"
                   onClick={() => setEditingUser(null)}
+                  className={isDark ? '!bg-[#202c33] !border-[#2a3942] !text-[#8696a0] hover:!text-[#e9edef]' : ''}
                 >
                   Cancel
                 </Button>
@@ -850,6 +1148,7 @@ export default function AdminDashboard({
                   size="sm"
                   disabled={savingEdit}
                   isLoading={savingEdit}
+                  className="!bg-[#00a884] hover:!bg-[#008f6f] !text-white"
                 >
                   Save Changes
                 </Button>
@@ -867,11 +1166,19 @@ export default function AdminDashboard({
           aria-labelledby="delete-user-title"
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn"
         >
-          <Card variant="white" className="p-6 max-w-sm w-full shadow-2xl">
-            <h3 id="delete-user-title" className="text-base font-bold text-[#1E1B2E] mb-2">
+          <Card
+            variant="white"
+            className={`p-6 max-w-sm w-full shadow-2xl ${
+              isDark ? '!bg-[#111b21] !border-[#222d34] text-[#e9edef]' : ''
+            }`}
+          >
+            <h3
+              id="delete-user-title"
+              className={`text-base font-bold mb-2 ${isDark ? 'text-[#e9edef]' : 'text-[#1E1B2E]'}`}
+            >
               Delete account for {userToDelete.name}?
             </h3>
-            <p className="text-xs text-[#797196] mb-5 leading-relaxed">
+            <p className={`text-xs mb-5 leading-relaxed ${isDark ? 'text-[#8696a0]' : 'text-[#797196]'}`}>
               This will permanently delete this account and all associated conversation history. This action cannot be undone.
             </p>
             <div className="flex justify-end gap-2.5">
@@ -880,6 +1187,7 @@ export default function AdminDashboard({
                 size="sm"
                 disabled={deleting}
                 onClick={() => setUserToDelete(null)}
+                className={isDark ? '!bg-[#202c33] !border-[#2a3942] !text-[#8696a0] hover:!text-[#e9edef]' : ''}
               >
                 Cancel
               </Button>
@@ -905,12 +1213,22 @@ export default function AdminDashboard({
           aria-labelledby="reset-db-title"
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn"
         >
-          <Card variant="white" className="p-6 max-w-sm w-full shadow-2xl border-l-4 border-l-[#EF4444]">
-            <h3 id="reset-db-title" className="text-base font-bold text-[#1E1B2E] mb-2 flex items-center gap-1.5">
+          <Card
+            variant="white"
+            className={`p-6 max-w-sm w-full shadow-2xl border-l-4 border-l-[#EF4444] ${
+              isDark ? '!bg-[#111b21] !border-[#222d34] !border-l-[#EF4444] text-[#e9edef]' : ''
+            }`}
+          >
+            <h3
+              id="reset-db-title"
+              className={`text-base font-bold mb-2 flex items-center gap-1.5 ${
+                isDark ? 'text-[#e9edef]' : 'text-[#1E1B2E]'
+              }`}
+            >
               <AlertTriangle className="w-5 h-5 text-[#EF4444]" />
               <span>Confirm Demo Reset</span>
             </h3>
-            <p className="text-xs text-[#797196] mb-5 leading-relaxed">
+            <p className={`text-xs mb-5 leading-relaxed ${isDark ? 'text-[#8696a0]' : 'text-[#797196]'}`}>
               Are you sure? This will permanently delete ALL messages, uploaded attachments, emoji reactions, and created users. Only the primary administrator account will be retained.
             </p>
             <div className="flex justify-end gap-2.5">
@@ -919,6 +1237,7 @@ export default function AdminDashboard({
                 size="sm"
                 disabled={resetting}
                 onClick={() => setShowResetConfirm(false)}
+                className={isDark ? '!bg-[#202c33] !border-[#2a3942] !text-[#8696a0] hover:!text-[#e9edef]' : ''}
               >
                 Cancel
               </Button>

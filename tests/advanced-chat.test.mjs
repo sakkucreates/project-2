@@ -7,7 +7,6 @@ import path from 'node:path';
 import {
   createUser,
   createMessage,
-  deleteMessage,
   resetDatabase,
   getConversationMessages,
 } from '../src/lib/db.ts';

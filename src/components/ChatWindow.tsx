@@ -19,6 +19,8 @@ import {
   Pin,
   Star,
   Plus,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { User, Message, Reaction } from '@/types';
 import { Avatar, Spinner } from '@/components/ui';
@@ -26,6 +28,7 @@ import { compressAndResizeImage } from '@/lib/imageCompression';
 import { APP_CONFIG } from '@/lib/config';
 import EmojiPicker from './EmojiPicker';
 import { isDifferentCalendarDay, formatDateDivider } from '@/lib/dateUtils';
+import { useTheme } from '@/context/ThemeContext';
 
 export const REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏'] as const;
 
@@ -61,6 +64,9 @@ export default function ChatWindow({
   loading,
   error = null,
 }: ChatWindowProps) {
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === 'dark';
+
   const [inputText, setInputText] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
@@ -322,13 +328,27 @@ export default function ChatWindow({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#F8F7FF] relative overflow-hidden">
+    <div
+      className={`flex-1 flex flex-col h-full relative overflow-hidden transition-colors duration-200 ${
+        isDark ? 'bg-[#0b141a]' : 'bg-[#efeae2]'
+      }`}
+    >
       {/* Chat Conversation Header */}
-      <header className="h-16 px-4 flex items-center justify-between bg-white border-b border-[#E8E3FA] z-10 shadow-sm">
+      <header
+        className={`h-16 px-4 flex items-center justify-between border-b z-10 shadow-xs transition-colors duration-200 ${
+          isDark
+            ? 'bg-[#202c33] border-[#222d34] text-[#e9edef]'
+            : 'bg-[#f0f2f5] border-[#d1d7db] text-[#111b21]'
+        }`}
+      >
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onBack}
-            className="md:hidden p-2 -ml-1 text-[#797196] hover:text-[#4C3A8C] hover:bg-[#EDE9FE]/50 rounded-xl transition-colors"
+            className={`md:hidden p-2 -ml-1 rounded-xl transition-colors ${
+              isDark
+                ? 'text-[#aebac1] hover:text-[#e9edef] hover:bg-[#111b21]'
+                : 'text-[#54656f] hover:text-[#111b21] hover:bg-[#e9edef]'
+            }`}
             title="Back to contacts"
             aria-label="Back to contacts"
           >
@@ -341,17 +361,23 @@ export default function ChatWindow({
             isOnline={contact.status === 'online'}
           />
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-[#1E1B2E] truncate">
+            <h2 className={`text-sm font-semibold truncate ${isDark ? 'text-[#e9edef]' : 'text-[#111b21]'}`}>
               {contact.name}
             </h2>
             <p className="text-[11px] font-medium flex items-center gap-1">
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
-                  contact.status === 'online' ? 'bg-[#10B981]' : 'bg-[#9E96BE]'
+                  contact.status === 'online' ? 'bg-[#00a884]' : isDark ? 'bg-[#8696a0]' : 'bg-[#9E96BE]'
                 }`}
               />
               <span
-                className={contact.status === 'online' ? 'text-[#10B981]' : 'text-[#797196]'}
+                className={
+                  contact.status === 'online'
+                    ? 'text-[#00a884]'
+                    : isDark
+                    ? 'text-[#8696a0]'
+                    : 'text-[#667781]'
+                }
               >
                 {contact.status === 'online' ? 'Online' : 'Offline'}
               </span>
@@ -360,12 +386,34 @@ export default function ChatWindow({
         </div>
 
         <div className="flex items-center gap-1">
+          {/* Header Theme Switcher Toggle */}
+          <button
+            onClick={toggleTheme}
+            title={isDark ? 'Switch to WhatsApp Light' : 'Switch to WhatsApp Dark'}
+            aria-label={isDark ? 'Switch to WhatsApp Light' : 'Switch to WhatsApp Dark'}
+            className={`p-2 rounded-xl transition-colors ${
+              isDark
+                ? 'text-[#aebac1] hover:text-[#00a884] hover:bg-[#111b21]'
+                : 'text-[#54656f] hover:text-[#008069] hover:bg-[#e9edef]'
+            }`}
+          >
+            {isDark ? (
+              <Sun className="w-5 h-5 text-[#f59e0b] hover:scale-110 transition-transform" />
+            ) : (
+              <Moon className="w-5 h-5 text-[#54656f] hover:scale-110 transition-transform" />
+            )}
+          </button>
+
           {onClearChat && (
             <button
               onClick={() => setShowClearConfirm(true)}
               title="Clear conversation history"
               aria-label="Clear conversation history"
-              className="p-2 text-[#797196] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-xl transition-colors"
+              className={`p-2 rounded-xl transition-colors ${
+                isDark
+                  ? 'text-[#aebac1] hover:text-[#ef4444] hover:bg-[#111b21]'
+                  : 'text-[#54656f] hover:text-[#ef4444] hover:bg-[#fee2e2]'
+              }`}
             >
               <Trash2 className="w-5 h-5" />
             </button>
@@ -381,20 +429,28 @@ export default function ChatWindow({
         </div>
       )}
 
-      {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#F8F7FF]">
+      {/* Messages Scroll Area with WhatsApp Doodle Wallpaper */}
+      <div className={`flex-1 overflow-y-auto p-4 space-y-3 wa-chat-bg select-text transition-colors duration-200 ${
+        isDark ? 'bg-[#0b141a]' : 'bg-[#efeae2]'
+      }`}>
         {loading && messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-[#797196]">
-            <Spinner size="md" className="mb-2" />
+          <div className={`h-full flex flex-col items-center justify-center ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`}>
+            <Spinner size="md" className="mb-2 text-[#00a884]" />
             <p className="text-xs">Loading conversation history...</p>
           </div>
         ) : messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-[#797196] text-center p-6">
-            <div className="w-12 h-12 rounded-2xl bg-[#EDE9FE] border border-[#D5CCF5] flex items-center justify-center text-[#7C5CFC] mb-3 shadow-sm">
+          <div className={`h-full flex flex-col items-center justify-center text-center p-6 ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`}>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-3 shadow-xs border ${
+              isDark
+                ? 'bg-[#202c33] border-[#2a3942] text-[#00a884]'
+                : 'bg-white border-[#e9edef] text-[#00a884]'
+            }`}>
               <MessageSquare className="w-6 h-6" />
             </div>
-            <p className="text-sm font-semibold text-[#1E1B2E]">No messages yet</p>
-            <p className="text-xs text-[#797196] mt-0.5 max-w-xs">
+            <p className={`text-sm font-semibold ${isDark ? 'text-[#e9edef]' : 'text-[#111b21]'}`}>
+              No messages yet
+            </p>
+            <p className="text-xs mt-0.5 max-w-xs opacity-80">
               Say hello or attach an image to start chatting with {contact.name}.
             </p>
           </div>
@@ -414,7 +470,11 @@ export default function ChatWindow({
               <React.Fragment key={msg.id}>
                 {showDateDivider && (
                   <div className="flex justify-center my-3 select-none">
-                    <span className="bg-white/90 border border-[#E8E3FA] text-[#797196] text-[11px] font-semibold px-3 py-1 rounded-full shadow-xs">
+                    <span className={`text-[11px] font-semibold px-3 py-1 rounded-full shadow-xs border ${
+                      isDark
+                        ? 'bg-[#182229] border-[#222d34] text-[#8696a0]'
+                        : 'bg-white border-[#e9edef] text-[#54656f]'
+                    }`}>
                       {formatDateDivider(msg.createdAt)}
                     </span>
                   </div>
@@ -434,7 +494,11 @@ export default function ChatWindow({
                       aria-label="Add reaction"
                       className={`absolute -top-3 ${
                         isMe ? '-left-7' : '-right-7'
-                      } opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 rounded-full bg-white border border-[#E8E3FA] text-[#797196] hover:text-[#7C5CFC] transition-opacity shadow-sm z-10`}
+                      } opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 rounded-full border transition-opacity shadow-xs z-10 ${
+                        isDark
+                          ? 'bg-[#202c33] border-[#2a3942] text-[#8696a0] hover:text-[#00a884]'
+                          : 'bg-white border-[#e9edef] text-[#54656f] hover:text-[#00a884]'
+                      }`}
                     >
                       <Smile className="w-3.5 h-3.5" />
                     </button>
@@ -445,7 +509,11 @@ export default function ChatWindow({
                     <div
                       className={`absolute -top-10 ${
                         isMe ? 'right-0' : 'left-0'
-                      } flex items-center gap-1.5 p-1.5 bg-white border border-[#E8E3FA] rounded-full shadow-lg z-20 animate-fadeIn`}
+                      } flex items-center gap-1.5 p-1.5 rounded-full shadow-lg z-20 animate-fadeIn border ${
+                        isDark
+                          ? 'bg-[#202c33] border-[#2a3942] text-[#e9edef]'
+                          : 'bg-white border-[#e9edef] text-[#111b21]'
+                      }`}
                     >
                       {REACTION_EMOJIS.map((emoji) => (
                         <button
@@ -482,7 +550,9 @@ export default function ChatWindow({
                       } flex flex-col items-start animate-fadeIn drop-shadow-xl`}
                     >
                       {/* 1. Quick Emoji Reaction Bar */}
-                      <div className="flex items-center gap-1 px-2.5 py-1.5 mb-1.5 bg-white border border-[#E8E3FA] rounded-full shadow-lg">
+                      <div className={`flex items-center gap-1 px-2.5 py-1.5 mb-1.5 rounded-full shadow-lg border ${
+                        isDark ? 'bg-[#202c33] border-[#2a3942]' : 'bg-white border-[#e9edef]'
+                      }`}>
                         {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => (
                           <button
                             key={emoji}
@@ -506,7 +576,11 @@ export default function ChatWindow({
                             setActiveMenuMsgId(null);
                             setActiveReactionMsgId(msg.id);
                           }}
-                          className="p-1 text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE] rounded-full transition-colors leading-none"
+                          className={`p-1 rounded-full transition-colors leading-none ${
+                            isDark
+                              ? 'text-[#aebac1] hover:text-[#00a884] hover:bg-[#111b21]'
+                              : 'text-[#54656f] hover:text-[#008069] hover:bg-[#e9edef]'
+                          }`}
                           title="More reactions"
                           aria-label="More reactions"
                         >
@@ -515,7 +589,9 @@ export default function ChatWindow({
                       </div>
 
                       {/* 2. Vertical Action Menu Options */}
-                      <div className="w-44 bg-white border border-[#E8E3FA] rounded-2xl shadow-xl py-1.5 overflow-hidden text-sm">
+                      <div className={`w-44 rounded-2xl shadow-2xl py-1.5 overflow-hidden text-sm border ${
+                        isDark ? 'bg-[#233138] border-[#2a3942] text-[#e9edef]' : 'bg-white border-[#e9edef] text-[#111b21]'
+                      }`}>
                         <button
                           type="button"
                           onClick={() => {
@@ -523,9 +599,11 @@ export default function ChatWindow({
                             setReplyingTo(msg);
                             textareaRef.current?.focus();
                           }}
-                          className="w-full flex items-center gap-3 px-3.5 py-2 text-[#1E1B2E] hover:bg-[#F8F7FF] hover:text-[#7C5CFC] transition-colors text-left"
+                          className={`w-full flex items-center gap-3 px-3.5 py-2 transition-colors text-left ${
+                            isDark ? 'hover:bg-[#182229] hover:text-[#00a884]' : 'hover:bg-[#f5f6f6] hover:text-[#00a884]'
+                          }`}
                         >
-                          <Reply className="w-4 h-4 text-[#797196]" />
+                          <Reply className={`w-4 h-4 ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`} />
                           <span>Reply</span>
                         </button>
 
@@ -535,9 +613,11 @@ export default function ChatWindow({
                             setActiveMenuMsgId(null);
                             setActiveReactionMsgId(msg.id);
                           }}
-                          className="w-full flex items-center gap-3 px-3.5 py-2 text-[#1E1B2E] hover:bg-[#F8F7FF] hover:text-[#7C5CFC] transition-colors text-left"
+                          className={`w-full flex items-center gap-3 px-3.5 py-2 transition-colors text-left ${
+                            isDark ? 'hover:bg-[#182229] hover:text-[#00a884]' : 'hover:bg-[#f5f6f6] hover:text-[#00a884]'
+                          }`}
                         >
-                          <Smile className="w-4 h-4 text-[#797196]" />
+                          <Smile className={`w-4 h-4 ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`} />
                           <span>React</span>
                         </button>
 
@@ -552,9 +632,11 @@ export default function ChatWindow({
                               return next;
                             });
                           }}
-                          className="w-full flex items-center gap-3 px-3.5 py-2 text-[#1E1B2E] hover:bg-[#F8F7FF] hover:text-[#7C5CFC] transition-colors text-left"
+                          className={`w-full flex items-center gap-3 px-3.5 py-2 transition-colors text-left ${
+                            isDark ? 'hover:bg-[#182229] hover:text-[#00a884]' : 'hover:bg-[#f5f6f6] hover:text-[#00a884]'
+                          }`}
                         >
-                          <Pin className="w-4 h-4 text-[#797196]" />
+                          <Pin className={`w-4 h-4 ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`} />
                           <span>{isPinned ? 'Unpin' : 'Pin'}</span>
                         </button>
 
@@ -569,13 +651,15 @@ export default function ChatWindow({
                               return next;
                             });
                           }}
-                          className="w-full flex items-center gap-3 px-3.5 py-2 text-[#1E1B2E] hover:bg-[#F8F7FF] hover:text-[#7C5CFC] transition-colors text-left"
+                          className={`w-full flex items-center gap-3 px-3.5 py-2 transition-colors text-left ${
+                            isDark ? 'hover:bg-[#182229] hover:text-[#00a884]' : 'hover:bg-[#f5f6f6] hover:text-[#00a884]'
+                          }`}
                         >
-                          <Star className={`w-4 h-4 ${isStarred ? 'fill-[#EAB308] text-[#EAB308]' : 'text-[#797196]'}`} />
+                          <Star className={`w-4 h-4 ${isStarred ? 'fill-[#EAB308] text-[#EAB308]' : isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`} />
                           <span>{isStarred ? 'Unstar' : 'Star'}</span>
                         </button>
 
-                        <div className="my-1 border-t border-[#F0EDFD]" />
+                        <div className={`my-1 border-t ${isDark ? 'border-[#2a3942]' : 'border-[#e9edef]'}`} />
 
                         <button
                           type="button"
@@ -585,7 +669,7 @@ export default function ChatWindow({
                               await onDeleteMessage(msg.id);
                             }
                           }}
-                          className="w-full flex items-center gap-3 px-3.5 py-2 text-[#EF4444] hover:bg-[#FEF2F2] transition-colors text-left font-medium"
+                          className="w-full flex items-center gap-3 px-3.5 py-2 text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors text-left font-medium"
                         >
                           <Trash2 className="w-4 h-4 text-[#EF4444]" />
                           <span>Delete</span>
@@ -596,10 +680,14 @@ export default function ChatWindow({
 
                   {/* Chat Message Bubble */}
                   <div
-                    className={`relative rounded-2xl px-4 py-2.5 text-sm shadow-sm transition-all group/bubble ${
+                    className={`relative rounded-2xl px-4 py-2.5 text-sm shadow-xs transition-all group/bubble ${
                       isMe
-                        ? 'bg-[#7C5CFC] text-white rounded-br-none'
-                        : 'bg-white text-[#1E1B2E] border border-[#E8E3FA] rounded-bl-none shadow-md shadow-[#4C3A8C]/5'
+                        ? isDark
+                          ? 'bg-[#005c4b] text-[#e9edef] rounded-br-none'
+                          : 'bg-[#d9fdd3] text-[#111b21] rounded-br-none shadow-xs'
+                        : isDark
+                        ? 'bg-[#202c33] text-[#e9edef] border border-[#2a3942] rounded-bl-none shadow-xs'
+                        : 'bg-white text-[#111b21] border border-[#e9edef] rounded-bl-none shadow-xs'
                     } ${msg.failed ? 'border-2 border-[#EF4444] bg-[#FEF2F2] text-[#991B1B]' : ''}`}
                   >
                     {/* Message Options Chevron Down Button (WhatsApp Style) */}
@@ -619,8 +707,12 @@ export default function ChatWindow({
                             : 'opacity-0 group-hover/bubble:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 max-sm:opacity-70 hover:opacity-100'
                         } ${
                           isMe
-                            ? 'text-white/80 hover:text-white hover:bg-white/20'
-                            : 'text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE]'
+                            ? isDark
+                              ? 'text-white/70 hover:text-white hover:bg-black/20'
+                              : 'text-[#111b21]/60 hover:text-[#111b21] hover:bg-black/10'
+                            : isDark
+                            ? 'text-[#8696a0] hover:text-[#e9edef] hover:bg-[#111b21]'
+                            : 'text-[#667781] hover:text-[#111b21] hover:bg-[#e9edef]'
                         }`}
                       >
                         <ChevronDown className="w-3.5 h-3.5" />
@@ -632,11 +724,15 @@ export default function ChatWindow({
                       <div
                         className={`mb-2 px-2.5 py-1.5 rounded-lg border-l-4 text-xs select-none ${
                           isMe
-                            ? 'bg-black/15 border-white/80 text-white/90'
-                            : 'bg-[#EDE9FE]/60 border-[#7C5CFC] text-[#5A507A]'
+                            ? isDark
+                              ? 'bg-black/20 border-l-[#25d366] text-[#e9edef]'
+                              : 'bg-black/5 border-l-[#00a884] text-[#111b21]'
+                            : isDark
+                            ? 'bg-black/25 border-l-[#00a884] text-[#e9edef]'
+                            : 'bg-[#f0f2f5] border-l-[#00a884] text-[#111b21]'
                         }`}
                       >
-                        <span className="font-semibold block text-[11px] mb-0.5">
+                        <span className="font-semibold block text-[11px] mb-0.5 text-[#00a884]">
                           {msg.replyTo.senderName || 'Replied message'}
                         </span>
                         <span className="truncate block opacity-85">
@@ -653,7 +749,7 @@ export default function ChatWindow({
                           lastActiveImageTriggerRef.current = e.currentTarget;
                           setPreviewLightbox(msg.image || null);
                         }}
-                        className="mb-2 block overflow-hidden rounded-xl focus:outline-none focus:ring-2 focus:ring-[#EDE9FE]"
+                        className="mb-2 block overflow-hidden rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00a884]"
                         title="Click to expand image"
                         aria-label="View enlarged image"
                       >
@@ -692,8 +788,12 @@ export default function ChatWindow({
                         isMe
                           ? msg.failed
                             ? 'text-[#EF4444]'
-                            : 'text-white/80'
-                          : 'text-[#797196]'
+                            : isDark
+                            ? 'text-white/75'
+                            : 'text-[#667781]'
+                          : isDark
+                          ? 'text-[#8696a0]'
+                          : 'text-[#667781]'
                       }`}
                     >
                       {isPinned && (
@@ -720,11 +820,11 @@ export default function ChatWindow({
                           {msg.failed ? (
                             <AlertCircle className="w-3.5 h-3.5 text-[#EF4444]" />
                           ) : msg.isOptimistic ? (
-                            <Spinner size="sm" className="text-white/80 w-3 h-3" />
+                            <Spinner size="sm" className="text-current opacity-70 w-3 h-3" />
                           ) : msg.read ? (
-                            <CheckCheck className="w-3.5 h-3.5 text-[#EDE9FE]" />
+                            <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb]" />
                           ) : (
-                            <Check className="w-3.5 h-3.5 text-white/70" />
+                            <Check className="w-3.5 h-3.5 text-current opacity-70" />
                           )}
                         </span>
                       )}
@@ -758,17 +858,21 @@ export default function ChatWindow({
 
       {/* Selected Image Preview Staging */}
       {selectedImage && (
-        <div className="px-4 py-2 bg-white border-t border-[#E8E3FA] flex items-center justify-between">
+        <div className={`px-4 py-2 border-t flex items-center justify-between ${
+          isDark ? 'bg-[#202c33] border-[#222d34]' : 'bg-white border-[#e9edef]'
+        }`}>
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={selectedImage}
               alt="Attachment preview"
-              className="w-12 h-12 object-cover rounded-xl border border-[#D5CCF5]"
+              className="w-12 h-12 object-cover rounded-xl border border-[#00a884]/30"
             />
             <div>
-              <span className="text-xs font-medium text-[#1E1B2E] block">Image attached</span>
-              <span className="text-[10px] text-[#797196]">Ready to send</span>
+              <span className={`text-xs font-medium block ${isDark ? 'text-[#e9edef]' : 'text-[#111b21]'}`}>
+                Image attached
+              </span>
+              <span className={`text-[10px] ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`}>Ready to send</span>
             </div>
           </div>
           <button
@@ -784,9 +888,11 @@ export default function ChatWindow({
 
       {/* Selected Video Preview Staging */}
       {selectedVideo && (
-        <div className="px-4 py-2 bg-white border-t border-[#E8E3FA] flex items-center justify-between animate-fadeIn">
+        <div className={`px-4 py-2 border-t flex items-center justify-between animate-fadeIn ${
+          isDark ? 'bg-[#202c33] border-[#222d34]' : 'bg-white border-[#e9edef]'
+        }`}>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-black/10 border border-[#D5CCF5] flex items-center justify-center overflow-hidden relative">
+            <div className="w-12 h-12 rounded-xl bg-black/20 border border-[#00a884]/30 flex items-center justify-center overflow-hidden relative">
               <video
                 src={selectedVideo}
                 className="w-full h-full object-cover"
@@ -795,8 +901,10 @@ export default function ChatWindow({
               />
             </div>
             <div>
-              <span className="text-xs font-medium text-[#1E1B2E] block">Video attached</span>
-              <span className="text-[10px] text-[#797196]">Ready to send</span>
+              <span className={`text-xs font-medium block ${isDark ? 'text-[#e9edef]' : 'text-[#111b21]'}`}>
+                Video attached
+              </span>
+              <span className={`text-[10px] ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`}>Ready to send</span>
             </div>
           </div>
           <button
@@ -812,15 +920,17 @@ export default function ChatWindow({
 
       {/* Selected Reply Preview Staging */}
       {replyingTo && (
-        <div className="px-4 py-2 bg-[#F8F7FF] border-t border-[#E8E3FA] flex items-center justify-between animate-fadeIn">
+        <div className={`px-4 py-2 border-t flex items-center justify-between animate-fadeIn ${
+          isDark ? 'bg-[#202c33] border-[#222d34]' : 'bg-[#f0f2f5] border-[#d1d7db]'
+        }`}>
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-1 self-stretch bg-[#7C5CFC] rounded-full min-h-[28px]" />
+            <div className="w-1 self-stretch bg-[#00a884] rounded-full min-h-[28px]" />
             <div className="text-xs truncate">
-              <span className="font-semibold text-[#7C5CFC] flex items-center gap-1.5">
+              <span className="font-semibold text-[#00a884] flex items-center gap-1.5">
                 <Reply className="w-3.5 h-3.5" />
                 Replying to {replyingTo.senderId === currentUser.id ? 'yourself' : contact.name}
               </span>
-              <span className="text-[#797196] truncate block">
+              <span className={`truncate block ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`}>
                 {replyingTo.text || (replyingTo.image ? '📷 Image' : replyingTo.video ? '🎥 Video' : 'Attachment')}
               </span>
             </div>
@@ -828,7 +938,7 @@ export default function ChatWindow({
           <button
             type="button"
             onClick={() => setReplyingTo(null)}
-            className="p-1.5 text-[#797196] hover:text-[#EF4444] rounded-lg transition-colors"
+            className={`p-1.5 hover:text-[#EF4444] rounded-lg transition-colors ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`}
             title="Cancel reply"
             aria-label="Cancel reply"
           >
@@ -861,7 +971,9 @@ export default function ChatWindow({
 
         <form
           onSubmit={handleSend}
-          className="p-3 bg-white border-t border-[#E8E3FA] flex items-end gap-2 z-10 shadow-sm"
+          className={`p-3 border-t flex items-end gap-2 z-10 shadow-xs transition-colors duration-200 ${
+            isDark ? 'bg-[#202c33] border-[#222d34]' : 'bg-[#f0f2f5] border-[#d1d7db]'
+          }`}
         >
           {/* Hidden File Input for Image Upload */}
           <input
@@ -887,10 +999,14 @@ export default function ChatWindow({
             disabled={compressingImage || readingVideo || submitting}
             title="Attach image"
             aria-label="Attach image"
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE]/50 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50"
+            className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50 ${
+              isDark
+                ? 'text-[#aebac1] hover:text-[#00a884] hover:bg-[#111b21]'
+                : 'text-[#54656f] hover:text-[#008069] hover:bg-[#e9edef]'
+            }`}
           >
             {compressingImage ? (
-              <Spinner size="sm" className="text-[#7C5CFC]" />
+              <Spinner size="sm" className="text-[#00a884]" />
             ) : (
               <ImageIcon className="w-5 h-5" />
             )}
@@ -902,10 +1018,14 @@ export default function ChatWindow({
             disabled={readingVideo || compressingImage || submitting}
             title="Attach video"
             aria-label="Attach video"
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE]/50 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50"
+            className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50 ${
+              isDark
+                ? 'text-[#aebac1] hover:text-[#00a884] hover:bg-[#111b21]'
+                : 'text-[#54656f] hover:text-[#008069] hover:bg-[#e9edef]'
+            }`}
           >
             {readingVideo ? (
-              <Spinner size="sm" className="text-[#7C5CFC]" />
+              <Spinner size="sm" className="text-[#00a884]" />
             ) : (
               <VideoIcon className="w-5 h-5" />
             )}
@@ -919,8 +1039,10 @@ export default function ChatWindow({
             aria-label={showEmojiPicker ? 'Close emoji picker' : 'Add emoji'}
             className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50 ${
               showEmojiPicker
-                ? 'text-[#7C5CFC] bg-[#EDE9FE]'
-                : 'text-[#797196] hover:text-[#7C5CFC] hover:bg-[#EDE9FE]/50'
+                ? 'text-[#00a884] bg-[#00a884]/15'
+                : isDark
+                ? 'text-[#aebac1] hover:text-[#00a884] hover:bg-[#111b21]'
+                : 'text-[#54656f] hover:text-[#008069] hover:bg-[#e9edef]'
             }`}
           >
             <Smile className="w-5 h-5" />
@@ -938,11 +1060,15 @@ export default function ChatWindow({
                   ? 'Add an optional caption... (Enter to send)'
                   : selectedVideo
                   ? 'Add an optional caption for video... (Enter to send)'
-                  : `Message ${contact.name}... (Enter to send)`
+                  : `Type a message... (Enter to send)`
               }
               aria-label={`Message ${contact.name}`}
               disabled={submitting}
-              className="w-full resize-none min-h-[44px] max-h-32 py-2.5 px-4 bg-[#F8F7FF] border border-[#DCD6F7] rounded-xl text-sm text-[#1E1B2E] placeholder-[#9E96BE] focus:outline-none focus:border-[#7C5CFC] focus:ring-2 focus:ring-[#7C5CFC]/20 transition-all leading-normal"
+              className={`w-full resize-none min-h-[44px] max-h-32 py-2.5 px-4 rounded-xl text-sm transition-all leading-normal outline-none ${
+                isDark
+                  ? 'bg-[#2a3942] text-[#e9edef] placeholder-[#8696a0] border border-transparent focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]'
+                  : 'bg-white text-[#111b21] placeholder-[#8696a0] border border-transparent focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]'
+              }`}
             />
           </div>
 
@@ -955,7 +1081,7 @@ export default function ChatWindow({
               readingVideo
             }
             aria-label="Send message"
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2.5 bg-[#7C5CFC] hover:bg-[#6C4AE8] active:bg-[#5E3CD8] disabled:bg-[#EDE9FE] disabled:text-[#8E82B2] disabled:cursor-not-allowed text-white rounded-xl transition-all shadow-md shadow-[#7C5CFC]/20 flex-shrink-0"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2.5 bg-[#00a884] hover:bg-[#02906f] active:bg-[#008069] disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-full transition-all shadow-md flex-shrink-0"
           >
             {submitting ? (
               <Spinner size="sm" className="text-white" />

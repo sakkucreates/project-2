@@ -127,3 +127,90 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* =========================================================================
+   WhatsApp Coded Theme Tokens (Dark & Light)
+   ========================================================================= */
+
+:root, [data-theme="light"] {
+  --wa-bg-app: #f0f2f5;
+  --wa-bg-panel: #ffffff;
+  --wa-bg-chat: #efeae2;
+  --wa-bg-header: #f0f2f5;
+  --wa-bg-search: #f0f2f5;
+  --wa-bg-input: #ffffff;
+  --wa-border: #e9edef;
+  --wa-border-subtle: #d1d7db;
+  --wa-text-primary: #111b21;
+  --wa-text-secondary: #667781;
+  --wa-text-muted: #8696a0;
+  --wa-bubble-out: #d9fdd3;
+  --wa-bubble-out-text: #111b21;
+  --wa-bubble-in: #ffffff;
+  --wa-bubble-in-text: #111b21;
+  --wa-green: #00a884;
+  --wa-green-hover: #02906f;
+  --wa-green-dark: #008069;
+  --wa-blue-ticks: #53bdeb;
+  --wa-date-badge-bg: #ffffff;
+  --wa-date-badge-text: #54656f;
+  --wa-menu-bg: #ffffff;
+  --wa-menu-hover: #f5f6f6;
+  --wa-active-contact: #f0f2f5;
+  --wa-hover-contact: #f5f6f6;
+  --wa-icon-color: #54656f;
+}
+
+[data-theme="dark"], .dark {
+  --wa-bg-app: #0c1317;
+  --wa-bg-panel: #111b21;
+  --wa-bg-chat: #0b141a;
+  --wa-bg-header: #202c33;
+  --wa-bg-search: #111b21;
+  --wa-bg-input: #2a3942;
+  --wa-border: #222d34;
+  --wa-border-subtle: #2a3942;
+  --wa-text-primary: #e9edef;
+  --wa-text-secondary: #8696a0;
+  --wa-text-muted: #667781;
+  --wa-bubble-out: #005c4b;
+  --wa-bubble-out-text: #e9edef;
+  --wa-bubble-in: #202c33;
+  --wa-bubble-in-text: #e9edef;
+  --wa-green: #00a884;
+  --wa-green-hover: #02906f;
+  --wa-green-dark: #008069;
+  --wa-blue-ticks: #53bdeb;
+  --wa-date-badge-bg: #182229;
+  --wa-date-badge-text: #8696a0;
+  --wa-menu-bg: #233138;
+  --wa-menu-hover: #182229;
+  --wa-active-contact: #2a3942;
+  --wa-hover-contact: #202c33;
+  --wa-icon-color: #aebac1;
+}
+
+/* WhatsApp Doodle Wallpaper Pattern */
+.wa-chat-bg {
+  position: relative;
+  background-color: var(--wa-bg-chat);
+}
+
+.wa-chat-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%239C92AC' fill-opacity='0.08' fill-rule='evenodd'%3E%3Cpath d='M16 12a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm44-6a5 5 0 0 0-5 5v2h10v-2a5 5 0 0 0-5-5zm-3 7v-2a3 3 0 0 1 6 0v2h-6zm45 15a4 4 0 0 0-4 4v4a4 4 0 0 0 8 0v-4a4 4 0 0 0-4-4zm-2 4a2 2 0 0 1 4 0v4a2 2 0 0 1-4 0v-4zm-76 34c-4.4 0-8 3.6-8 8s3.6 8 8 8 8-3.6 8-8-3.6-8-8-8zm0 2c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6 2.7-6 6-6zm60-12a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm-22 36a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm42-8a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm-70 12a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm88-34a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm-46-42a5 5 0 1 0 0 10 5 5 0 0 0 0-10z'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 240px 240px;
+  background-repeat: repeat;
+  z-index: 0;
+}
+
+[data-theme="light"] .wa-chat-bg::before {
+  opacity: 0.65;
+}
+
+[data-theme="dark"] .wa-chat-bg::before, .dark .wa-chat-bg::before {
+  opacity: 0.4;
+}

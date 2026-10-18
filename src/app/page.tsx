@@ -10,10 +10,14 @@ import ContactsSidebar from '@/components/ContactsSidebar';
 import ChatWindow, { ChatMessageItem } from '@/components/ChatWindow';
 import { Lock } from 'lucide-react';
 import { Spinner } from '@/components/ui';
+import { useTheme } from '@/context/ThemeContext';
 
 type AppState = 'loading' | 'gate' | 'switcher' | 'authenticated' | 'disguise';
 
 export default function HomePage() {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
   const [appState, setAppState] = useState<AppState>('loading');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
@@ -537,17 +541,25 @@ export default function HomePage() {
     setMessages([]); // Clear previous conversation history immediately to avoid flash of stale data
   };
 
-  // 1. Initial Loading Screen (Lavender & White)
+  // 1. Initial Loading Screen
   if (appState === 'loading') {
     return (
-      <main className="min-h-screen bg-[#F8F7FF] text-[#1E1B2E] flex flex-col items-center justify-center p-4">
+      <main className={`min-h-screen flex flex-col items-center justify-center p-4 transition-colors duration-200 bg-[#F8F7FF] ${
+        isDark ? '!bg-[#0c1317] text-[#e9edef]' : '!bg-[#f0f2f5] text-[#111b21]'
+      }`}>
         <div className="flex flex-col items-center gap-4 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-[#EDE9FE] border border-[#D5CCF5] flex items-center justify-center text-[#7C5CFC] shadow-sm animate-pulse">
+          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-xs animate-pulse border ${
+            isDark
+              ? 'bg-[#202c33] border-[#2a3942] text-[#00a884]'
+              : 'bg-white border-[#e9edef] text-[#00a884]'
+          }`}>
             <Lock className="w-7 h-7" />
           </div>
           <div>
-            <p className="text-xs text-[#797196] flex items-center justify-center gap-2">
-              <Spinner size="sm" />
+            <p className={`text-xs flex items-center justify-center gap-2 ${
+              isDark ? 'text-[#8696a0]' : 'text-[#667781]'
+            }`}>
+              <Spinner size="sm" className="text-[#00a884]" />
               <span>Verifying secure session...</span>
             </p>
           </div>
@@ -585,9 +597,11 @@ export default function HomePage() {
     );
   }
 
-  // 5. Authenticated Core Messaging Layout (Lavender & White Theme)
+  // 5. Authenticated Core Messaging Layout (WhatsApp Coded Theme)
   return (
-    <main className="h-screen w-screen overflow-hidden bg-[#F8F7FF] flex">
+    <main className={`h-screen w-screen overflow-hidden flex transition-colors duration-200 bg-[#F8F7FF] ${
+      isDark ? '!bg-[#0c1317] text-[#e9edef]' : '!bg-[#f0f2f5] text-[#111b21]'
+    }`}>
       {currentUser && (
         <div className="flex w-full h-full">
           {/* Contacts Sidebar: Visible on desktop, or on mobile when view is 'contacts' */}
@@ -632,14 +646,20 @@ export default function HomePage() {
                 error={messagesError}
               />
             ) : (
-              <div className="hidden md:flex flex-1 flex-col items-center justify-center p-8 text-center bg-[#F8F7FF] text-[#797196]">
-                <div className="w-16 h-16 rounded-2xl bg-[#EDE9FE] border border-[#D5CCF5] flex items-center justify-center text-[#7C5CFC] mb-4 shadow-sm">
+              <div className={`hidden md:flex flex-1 flex-col items-center justify-center p-8 text-center wa-chat-bg transition-colors duration-200 ${
+                isDark ? 'bg-[#0b141a] text-[#8696a0]' : 'bg-[#efeae2] text-[#667781]'
+              }`}>
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 shadow-xs border ${
+                  isDark
+                    ? 'bg-[#202c33] border-[#2a3942] text-[#00a884]'
+                    : 'bg-white border-[#e9edef] text-[#00a884]'
+                }`}>
                   <span className="text-3xl">💬</span>
                 </div>
-                <h2 className="text-lg font-semibold text-[#1E1B2E] mb-1">
+                <h2 className={`text-lg font-semibold mb-1 ${isDark ? 'text-[#e9edef]' : 'text-[#111b21]'}`}>
                   Select a contact to begin chatting
                 </h2>
-                <p className="text-xs text-[#797196] max-w-sm leading-relaxed">
+                <p className="text-xs max-w-sm leading-relaxed opacity-80">
                   Choose a contact from the sidebar to open conversation history and send direct messages in real-time.
                 </p>
               </div>
