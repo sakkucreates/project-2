@@ -554,7 +554,8 @@ export async function deleteUser(id: string): Promise<boolean> {
 
 export async function getConversationMessages(
   user1Id: string,
-  user2Id: string
+  user2Id: string,
+  viewerId?: string
 ): Promise<Message[]> {
   const allMessages =
     isKvConfigured() ? (await getKvMessages()) || [] : (await getDb()).messages;
@@ -562,8 +563,9 @@ export async function getConversationMessages(
   const msgs = allMessages
     .filter(
       (m) =>
-        (m.senderId === user1Id && m.receiverId === user2Id) ||
-        (m.senderId === user2Id && m.receiverId === user1Id)
+        ((m.senderId === user1Id && m.receiverId === user2Id) ||
+         (m.senderId === user2Id && m.receiverId === user1Id)) &&
+        (!viewerId || !m.deletedFor || !m.deletedFor.includes(viewerId))
     )
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
@@ -736,6 +738,37 @@ export async function deleteMessage(messageId: string): Promise<boolean> {
   }
 
   return db.messages.length < initialLength;
+}
+
+export async function deleteMessageForUser(messageId: string, userId: string): Promise<boolean> {
+  assertPersistenceAvailable('deleteMessageForUser');
+
+  const db = await getDb();
+  const msg = db.messages.find((m) => m.id === messageId);
+  if (!msg) return false;
+
+  if (!msg.deletedFor) {
+    msg.deletedFor = [];
+  }
+  if (!msg.deletedFor.includes(userId)) {
+    msg.deletedFor.push(userId);
+  }
+
+  if (memoryStore && Array.isArray(memoryStore.messages)) {
+    const memMsg = memoryStore.messages.find((m) => m.id === messageId);
+    if (memMsg) {
+      if (!memMsg.deletedFor) memMsg.deletedFor = [];
+      if (!memMsg.deletedFor.includes(userId)) memMsg.deletedFor.push(userId);
+    }
+  }
+
+  if (isKvConfigured()) {
+    await saveKvMessages(db.messages);
+  } else {
+    await saveDb(db);
+  }
+
+  return true;
 }
 
 export async function addReactionToMessage(

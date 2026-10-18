@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getConversationMessages, createMessage, deleteMessage } from '@/lib/db';
+import { getConversationMessages, createMessage, deleteMessage, deleteMessageForUser } from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { validateMessageContent, validateIdempotencyKey, parseJsonBody } from '@/lib/validation';
 import { handleApiError, ForbiddenError, ValidationError } from '@/lib/errors';
@@ -21,7 +21,8 @@ export async function GET(request: Request) {
       throw new ForbiddenError('You are not authorized to view messages from this conversation.');
     }
 
-    const messages = await getConversationMessages(userId, contactId);
+    const viewerId = authUser?.id || userId;
+    const messages = await getConversationMessages(userId, contactId, viewerId);
 
     return NextResponse.json(
       { messages },
@@ -89,15 +90,21 @@ export async function POST(request: Request) {
   }
 }
 
-// DELETE /api/messages?messageId=... deletes a single message
+// DELETE /api/messages?messageId=...&mode=... deletes a single message (for everyone or for me)
 export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     let messageId = searchParams.get('messageId');
+    let mode = searchParams.get('mode') as 'everyone' | 'forMe' | null;
 
     if (!messageId) {
-      const body = await parseJsonBody<{ messageId?: string }>(request).catch(() => ({ messageId: undefined } as { messageId?: string }));
+      const body = await parseJsonBody<{ messageId?: string; mode?: 'everyone' | 'forMe' }>(request).catch(
+        () => ({} as { messageId?: string; mode?: 'everyone' | 'forMe' })
+      );
       messageId = body.messageId || null;
+      if (!mode && body.mode) {
+        mode = body.mode;
+      }
     }
 
     if (!messageId || typeof messageId !== 'string') {
@@ -110,9 +117,15 @@ export async function DELETE(request: Request) {
       throw new ForbiddenError('Authentication required to delete messages.');
     }
 
+    if (mode === 'forMe') {
+      const deleted = await deleteMessageForUser(messageId, authUser.id);
+      return NextResponse.json({ success: true, deleted, mode: 'forMe' });
+    }
+
+    // Default: delete for everyone
     const deleted = await deleteMessage(messageId);
 
-    return NextResponse.json({ success: true, deleted });
+    return NextResponse.json({ success: true, deleted, mode: 'everyone' });
   } catch (error) {
     return handleApiError(error);
   }

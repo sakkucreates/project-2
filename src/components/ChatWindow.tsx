@@ -21,6 +21,10 @@ import {
   Plus,
   Sun,
   Moon,
+  ShieldAlert,
+  Video,
+  Phone,
+  Lock,
 } from 'lucide-react';
 import { User, Message, Reaction } from '@/types';
 import { Avatar, Spinner } from '@/components/ui';
@@ -44,8 +48,9 @@ export interface ChatWindowProps {
   onSendMessage: (text: string, image?: string, video?: string, replyTo?: Message['replyTo']) => Promise<boolean>;
   onRetryMessage?: (messageId: string, text: string, image?: string, video?: string) => Promise<void>;
   onReactToMessage?: (messageId: string, emoji: string) => Promise<void>;
-  onDeleteMessage?: (messageId: string) => Promise<boolean>;
+  onDeleteMessage?: (messageId: string, mode?: 'everyone' | 'forMe') => Promise<boolean>;
   onClearChat?: () => Promise<boolean>;
+  onPanic?: () => void;
   onBack: () => void;
   loading: boolean;
   error?: string | null;
@@ -60,6 +65,7 @@ export default function ChatWindow({
   onReactToMessage,
   onDeleteMessage,
   onClearChat,
+  onPanic,
   onBack,
   loading,
   error = null,
@@ -76,6 +82,8 @@ export default function ChatWindow({
   const [submitting, setSubmitting] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [deleteTargetMsg, setDeleteTargetMsg] = useState<ChatMessageItem | null>(null);
+  const [hiddenMsgIds, setHiddenMsgIds] = useState<Set<string>>(() => new Set());
   const [previewLightbox, setPreviewLightbox] = useState<string | null>(null);
   const [activeReactionMsgId, setActiveReactionMsgId] = useState<string | null>(null);
   const [activeMenuMsgId, setActiveMenuMsgId] = useState<string | null>(null);
@@ -327,6 +335,8 @@ export default function ChatWindow({
     );
   };
 
+  const visibleMessages = messages.filter((m) => !hiddenMsgIds.has(m.id));
+
   return (
     <div
       className={`flex-1 flex flex-col h-full relative overflow-hidden transition-colors duration-200 ${
@@ -369,7 +379,7 @@ export default function ChatWindow({
                 className={`w-1.5 h-1.5 rounded-full ${
                   contact.status === 'online' ? 'bg-[#00a884]' : isDark ? 'bg-[#8696a0]' : 'bg-[#9E96BE]'
                 }`}
-              />
+              ></span>
               <span
                 className={
                   contact.status === 'online'
@@ -385,7 +395,80 @@ export default function ChatWindow({
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 sm:gap-2">
+          {/* Emergency Panic Button - Opens Beauty and Joy Camouflage */}
+          {onPanic && (
+            <button
+              type="button"
+              onClick={onPanic}
+              title="Panic: Open Beauty and Joy Camouflage"
+              aria-label="Panic: Open Beauty and Joy Camouflage"
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border border-[#eab308] text-[#eab308] bg-[#ca8a04]/10 hover:bg-[#ca8a04]/20 transition-all cursor-pointer shadow-xs active:scale-95"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-[#eab308]" />
+              <span>Panic</span>
+            </button>
+          )}
+
+          {/* Video Call Icon */}
+          <button
+            type="button"
+            onClick={() => alert('Video calling is not available at the moment.')}
+            title="Start video call"
+            aria-label="Start video call"
+            className={`p-2 rounded-xl transition-colors ${
+              isDark
+                ? 'text-[#aebac1] hover:text-[#e9edef] hover:bg-[#111b21]'
+                : 'text-[#54656f] hover:text-[#111b21] hover:bg-[#e9edef]'
+            }`}
+          >
+            <Video className="w-5 h-5" />
+          </button>
+
+          {/* Voice Call Icon */}
+          <button
+            type="button"
+            onClick={() => alert('Voice calling is not available at the moment.')}
+            title="Start voice call"
+            aria-label="Start voice call"
+            className={`p-2 rounded-xl transition-colors ${
+              isDark
+                ? 'text-[#aebac1] hover:text-[#e9edef] hover:bg-[#111b21]'
+                : 'text-[#54656f] hover:text-[#111b21] hover:bg-[#e9edef]'
+            }`}
+          >
+            <Phone className="w-5 h-5" />
+          </button>
+
+          {/* Clear Chat Button */}
+          {onClearChat && (
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              title="Clear conversation history"
+              aria-label="Clear conversation history"
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+                isDark
+                  ? 'text-[#ef4444] hover:bg-[#ef4444]/10'
+                  : 'text-[#ef4444] hover:bg-[#fee2e2]'
+              }`}
+            >
+              <Trash2 className="w-4 h-4 text-[#ef4444]" />
+              <span className="hidden sm:inline">Clear Chat</span>
+            </button>
+          )}
+
+          {/* Passcode Encrypted Badge */}
+          <div
+            className={`hidden lg:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${
+              isDark
+                ? 'border-[#00a884]/40 bg-[#00a884]/10 text-[#00a884]'
+                : 'border-[#00a884]/40 bg-[#d9fdd3] text-[#008069]'
+            }`}
+          >
+            <Lock className="w-3 h-3 text-[#00a884]" />
+            <span>Passcode Encrypted</span>
+          </div>
+
           {/* Header Theme Switcher Toggle */}
           <button
             onClick={toggleTheme}
@@ -403,23 +486,24 @@ export default function ChatWindow({
               <Moon className="w-5 h-5 text-[#54656f] hover:scale-110 transition-transform" />
             )}
           </button>
-
-          {onClearChat && (
-            <button
-              onClick={() => setShowClearConfirm(true)}
-              title="Clear conversation history"
-              aria-label="Clear conversation history"
-              className={`p-2 rounded-xl transition-colors ${
-                isDark
-                  ? 'text-[#aebac1] hover:text-[#ef4444] hover:bg-[#111b21]'
-                  : 'text-[#54656f] hover:text-[#ef4444] hover:bg-[#fee2e2]'
-              }`}
-            >
-              <Trash2 className="w-5 h-5" />
-            </button>
-          )}
         </div>
       </header>
+
+      {/* End-to-end / Direct & Private encryption banner (WhatsApp Style) */}
+      <div className="flex justify-center pt-2 px-4 select-none z-10">
+        <div
+          className={`max-w-md text-center px-4 py-1.5 rounded-lg text-[11px] leading-relaxed flex items-center justify-center gap-1.5 shadow-xs border ${
+            isDark
+              ? 'bg-[#182229] border-[#222d34] text-[#ffd279]'
+              : 'bg-[#fff5c4] border-[#ffe885] text-[#54656f]'
+          }`}
+        >
+          <Lock className="w-3.5 h-3.5 flex-shrink-0 text-[#eab308]" />
+          <span>
+            Messages are direct &amp; private to <strong>{contact.name}</strong>. No login required.
+          </span>
+        </div>
+      </div>
 
       {/* Network or Sync Error Banner */}
       {error && (
@@ -433,12 +517,12 @@ export default function ChatWindow({
       <div className={`flex-1 overflow-y-auto p-4 space-y-3 wa-chat-bg select-text transition-colors duration-200 ${
         isDark ? 'bg-[#0b141a]' : 'bg-[#efeae2]'
       }`}>
-        {loading && messages.length === 0 ? (
+        {loading && visibleMessages.length === 0 ? (
           <div className={`h-full flex flex-col items-center justify-center ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`}>
             <Spinner size="md" className="mb-2 text-[#00a884]" />
             <p className="text-xs">Loading conversation history...</p>
           </div>
-        ) : messages.length === 0 ? (
+        ) : visibleMessages.length === 0 ? (
           <div className={`h-full flex flex-col items-center justify-center text-center p-6 ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`}>
             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-3 shadow-xs border ${
               isDark
@@ -455,7 +539,7 @@ export default function ChatWindow({
             </p>
           </div>
         ) : (
-          messages.map((msg, idx) => {
+          visibleMessages.map((msg, idx) => {
             const isMe = msg.senderId === currentUser.id;
             const isPickerOpen = activeReactionMsgId === msg.id;
             const isMenuOpen = activeMenuMsgId === msg.id;
@@ -463,7 +547,7 @@ export default function ChatWindow({
             const isStarred = starredMsgIds.has(msg.id) || Boolean(msg.starred);
             const showDateDivider = isDifferentCalendarDay(
               msg.createdAt,
-              messages[idx - 1]?.createdAt
+              visibleMessages[idx - 1]?.createdAt
             );
 
             return (
@@ -663,13 +747,11 @@ export default function ChatWindow({
 
                         <button
                           type="button"
-                          onClick={async () => {
+                          onClick={() => {
                             setActiveMenuMsgId(null);
-                            if (onDeleteMessage) {
-                              await onDeleteMessage(msg.id);
-                            }
+                            setDeleteTargetMsg(msg);
                           }}
-                          className="w-full flex items-center gap-3 px-3.5 py-2 text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors text-left font-medium"
+                          className="w-full flex items-center gap-3 px-3.5 py-2 text-[#EF4444] hover:bg-[#EF4444]/10 transition-colors text-left font-medium cursor-pointer"
                         >
                           <Trash2 className="w-4 h-4 text-[#EF4444]" />
                           <span>Delete</span>
@@ -1132,20 +1214,28 @@ export default function ChatWindow({
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn"
         >
           <div
-            className="bg-white border border-[#E8E3FA] rounded-2xl p-6 max-w-sm w-full shadow-2xl text-[#1E1B2E]"
+            className={`border rounded-2xl p-6 max-w-sm w-full shadow-2xl transition-all ${
+              isDark
+                ? 'bg-[#202c33] border-[#2a3942] text-[#e9edef]'
+                : 'bg-white border-[#E8E3FA] text-[#1E1B2E]'
+            }`}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 id="clear-chat-title" className="text-base font-bold text-[#1E1B2E] mb-2">
+            <h3 id="clear-chat-title" className={`text-base font-bold mb-2 ${isDark ? 'text-[#e9edef]' : 'text-[#1E1B2E]'}`}>
               Clear this conversation?
             </h3>
-            <p className="text-xs text-[#797196] mb-5 leading-relaxed">
+            <p className={`text-xs mb-5 leading-relaxed ${isDark ? 'text-[#8696a0]' : 'text-[#797196]'}`}>
               This action permanently deletes all messages in this conversation for both participants. Cleared messages cannot be recovered.
             </p>
             <div className="flex justify-end gap-2.5">
               <button
                 disabled={clearing}
                 onClick={() => setShowClearConfirm(false)}
-                className="min-h-[40px] px-4 py-2 text-xs font-semibold text-[#4B4562] hover:bg-[#F8F7FF] border border-[#D5CCF5] rounded-xl transition-colors"
+                className={`min-h-[40px] px-4 py-2 text-xs font-semibold rounded-xl transition-colors border ${
+                  isDark
+                    ? 'text-[#8696a0] hover:text-[#e9edef] hover:bg-[#111b21] border-[#2a3942]'
+                    : 'text-[#4B4562] hover:bg-[#F8F7FF] border-[#D5CCF5]'
+                }`}
               >
                 Cancel
               </button>
@@ -1162,10 +1252,87 @@ export default function ChatWindow({
                     setClearing(false);
                   }
                 }}
-                className="min-h-[40px] px-4 py-2 text-xs font-semibold bg-[#EF4444] hover:bg-[#DC2626] text-white rounded-xl transition-colors shadow-md flex items-center gap-1.5"
+                className="min-h-[40px] px-4 py-2 text-xs font-semibold bg-[#EF4444] hover:bg-[#DC2626] text-white rounded-xl transition-colors shadow-md flex items-center gap-1.5 cursor-pointer"
               >
                 {clearing ? <Spinner size="sm" className="text-white" /> : null}
                 <span>Clear Chat</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Style Delete Message Confirmation Modal */}
+      {deleteTargetMsg && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-msg-title"
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fadeIn"
+          onClick={() => setDeleteTargetMsg(null)}
+        >
+          <div
+            className={`w-full max-w-sm rounded-2xl p-6 shadow-2xl transition-all border ${
+              isDark
+                ? 'bg-[#202c33] border-[#2a3942] text-[#e9edef]'
+                : 'bg-white border-[#e9edef] text-[#111b21]'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="delete-msg-title" className={`text-base font-bold mb-2 ${isDark ? 'text-[#e9edef]' : 'text-[#111b21]'}`}>
+              Delete message?
+            </h3>
+            <p className={`text-xs mb-6 leading-relaxed ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`}>
+              {deleteTargetMsg.senderId === currentUser.id
+                ? 'You can delete this message for everyone or delete it from your devices only.'
+                : 'You can delete this message from your devices only.'}
+            </p>
+
+            <div className="flex flex-col gap-2">
+              {deleteTargetMsg.senderId === currentUser.id && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = deleteTargetMsg.id;
+                    // Instant optimistic removal from UI with 0ms delay
+                    setHiddenMsgIds((prev) => new Set(prev).add(id));
+                    setDeleteTargetMsg(null);
+                    onDeleteMessage?.(id, 'everyone');
+                  }}
+                  className="w-full min-h-[40px] px-4 py-2.5 rounded-xl text-xs font-semibold text-[#ef4444] bg-[#ef4444]/10 hover:bg-[#ef4444]/20 transition-all text-center cursor-pointer active:scale-[0.99]"
+                >
+                  Delete for everyone
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  const id = deleteTargetMsg.id;
+                  // Instant optimistic removal from UI with 0ms delay
+                  setHiddenMsgIds((prev) => new Set(prev).add(id));
+                  setDeleteTargetMsg(null);
+                  onDeleteMessage?.(id, 'forMe');
+                }}
+                className={`w-full min-h-[40px] px-4 py-2.5 rounded-xl text-xs font-semibold transition-all text-center cursor-pointer active:scale-[0.99] ${
+                  isDark
+                    ? 'bg-[#111b21] hover:bg-[#2a3942] text-[#e9edef]'
+                    : 'bg-[#f0f2f5] hover:bg-[#e9edef] text-[#111b21]'
+                }`}
+              >
+                Delete for me
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDeleteTargetMsg(null)}
+                className={`w-full min-h-[38px] px-4 py-2 rounded-xl text-xs font-medium transition-all text-center cursor-pointer ${
+                  isDark
+                    ? 'text-[#8696a0] hover:text-[#e9edef] hover:bg-[#111b21]/50'
+                    : 'text-[#667781] hover:text-[#111b21] hover:bg-[#f0f2f5]'
+                }`}
+              >
+                Cancel
               </button>
             </div>
           </div>

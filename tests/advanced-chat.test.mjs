@@ -378,6 +378,35 @@ describe('LumaChat Phase 6: Advanced Chat Features Tests', () => {
     assert.equal(afterMsgs.some((m) => m.id === msg.id), false);
   });
 
+  test('DELETE /api/messages with mode=forMe hides message from caller but retains it for other participant', async () => {
+    const msg = await createMessage({
+      senderId: userA.id,
+      receiverId: userB.id,
+      text: 'Secret message deleted for me only',
+    });
+
+    const req = new Request(`http://localhost:3000/api/messages?messageId=${msg.id}&mode=forMe`, {
+      method: 'DELETE',
+      headers: {
+        Cookie: `${SESSION_COOKIE_NAME}=${tokenA}`,
+      },
+    });
+
+    const res = await messagesDelete(req);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.success, true);
+    assert.equal(body.mode, 'forMe');
+
+    // Hidden from userA
+    const msgsForA = await getConversationMessages(userA.id, userB.id, userA.id);
+    assert.equal(msgsForA.some((m) => m.id === msg.id), false);
+
+    // Still visible for userB
+    const msgsForB = await getConversationMessages(userB.id, userA.id, userB.id);
+    assert.equal(msgsForB.some((m) => m.id === msg.id), true);
+  });
+
   test('DELETE /api/messages rejects unauthenticated caller', async () => {
     const msg = await createMessage({
       senderId: userA.id,
@@ -430,6 +459,12 @@ describe('LumaChat Phase 6: Advanced Chat Features Tests', () => {
     assert.match(content, /Pin/);
     assert.match(content, /Star/);
     assert.match(content, /Delete/);
+
+    // WhatsApp Panic button & Delete for everyone / Delete for me options
+    assert.match(content, /Panic/);
+    assert.match(content, /Delete for everyone/);
+    assert.match(content, /Delete for me/);
+    assert.match(content, /Passcode Encrypted/);
   });
 });
 

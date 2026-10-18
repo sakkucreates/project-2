@@ -35,8 +35,9 @@ export async function GET(request: Request) {
         const conversationMsgs = db.messages
           .filter(
             (m) =>
-              (m.senderId === user.id && m.receiverId === activeUserId) ||
-              (m.senderId === activeUserId && m.receiverId === user.id)
+              ((m.senderId === user.id && m.receiverId === activeUserId) ||
+               (m.senderId === activeUserId && m.receiverId === user.id)) &&
+              (!m.deletedFor || !m.deletedFor.includes(activeUserId))
           )
           .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
@@ -49,7 +50,11 @@ export async function GET(request: Request) {
           unreadCount = 0;
         } else {
           unreadCount = db.messages.filter(
-            (m) => m.senderId === user.id && m.receiverId === activeUserId && !m.read
+            (m) =>
+              m.senderId === user.id &&
+              m.receiverId === activeUserId &&
+              !m.read &&
+              (!m.deletedFor || !m.deletedFor.includes(activeUserId))
           ).length;
         }
       }

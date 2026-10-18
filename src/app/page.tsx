@@ -512,26 +512,42 @@ export default function HomePage() {
     }
   };
 
-  // Handle deleting an individual message
-  const handleDeleteMessage = async (messageId: string): Promise<boolean> => {
+  // Handle deleting an individual message (optimistic instant removal)
+  const handleDeleteMessage = async (
+    messageId: string,
+    mode: 'everyone' | 'forMe' = 'everyone'
+  ): Promise<boolean> => {
     if (!currentUser) return false;
 
+    // 1. Instant optimistic removal from UI with 0ms delay
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+
     try {
-      const res = await fetch(`/api/messages?messageId=${encodeURIComponent(messageId)}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(
+        `/api/messages?messageId=${encodeURIComponent(messageId)}&mode=${encodeURIComponent(mode)}`,
+        {
+          method: 'DELETE',
+        }
+      );
 
       const data = await res.json();
       if (!res.ok || !data.success) {
         return false;
       }
 
-      setMessages((prev) => prev.filter((m) => m.id !== messageId));
       fetchUsers();
       return true;
     } catch {
       return false;
     }
+  };
+
+  // Emergency Panic Button: switches immediately to Beauty and Joy disguise website for safety
+  const handlePanic = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(APP_CONFIG.storageKeys.disguiseMode, 'true');
+    }
+    setAppState('disguise');
   };
 
   // Contact selection handler
@@ -641,6 +657,7 @@ export default function HomePage() {
                 onReactToMessage={handleReactToMessage}
                 onDeleteMessage={handleDeleteMessage}
                 onClearChat={handleClearChat}
+                onPanic={handlePanic}
                 onBack={() => setMobileView('contacts')}
                 loading={messagesLoading}
                 error={messagesError}

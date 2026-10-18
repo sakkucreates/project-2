@@ -43,6 +43,7 @@ export interface Message {
     text?: string;
     senderName?: string;
   };
+  deletedFor?: string[];         // User IDs who deleted this message for themselves
 }
 
 export interface DatabaseSchema {
