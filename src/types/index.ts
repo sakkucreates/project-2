@@ -23,6 +23,7 @@ export interface User {
   notes?: string;                // Admin-only internal notes
   unreadCount?: number;          // Aggregated unread count for sidebar contact list
   lastMessage?: Message | null;  // Latest message preview in sidebar
+  typingTo?: string | null;      // ID of contact this user is currently typing to
 }
 
 export interface Message {
@@ -32,6 +33,7 @@ export interface Message {
   text: string;
   image?: string;                // Base64 data URI
   video?: string;                // Base64 data URI
+  audio?: string;                // Base64 data URI for voice notes
   createdAt: string;             // ISO 8601 timestamp
   read: boolean;
   reactions?: Reaction[];

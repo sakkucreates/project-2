@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getConversationMessages, createMessage, deleteMessage, deleteMessageForUser } from '@/lib/db';
+import {
+  getConversationMessages,
+  createMessage,
+  deleteMessage,
+  deleteMessageForUser,
+  getUserTypingTo,
+} from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { validateMessageContent, validateIdempotencyKey, parseJsonBody } from '@/lib/validation';
 import { handleApiError, ForbiddenError, ValidationError } from '@/lib/errors';
@@ -23,9 +29,10 @@ export async function GET(request: Request) {
 
     const viewerId = authUser?.id || userId;
     const messages = await getConversationMessages(userId, contactId, viewerId);
+    const isContactTyping = getUserTypingTo(contactId) === userId;
 
     return NextResponse.json(
-      { messages },
+      { messages, isContactTyping },
       {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -46,11 +53,12 @@ export async function POST(request: Request) {
       text?: string;
       image?: string;
       video?: string;
+      audio?: string;
       replyTo?: { id: string; text?: string; senderName?: string };
       idempotencyKey?: string;
     }>(request);
 
-    const { receiverId, text, image, video, replyTo, idempotencyKey } = body;
+    const { receiverId, text, image, video, audio, replyTo, idempotencyKey } = body;
     let { senderId } = body;
 
     if (!receiverId || typeof receiverId !== 'string') {
@@ -71,7 +79,12 @@ export async function POST(request: Request) {
       }
     }
 
-    const { text: validatedText, image: validatedImage, video: validatedVideo } = validateMessageContent(text, image, video);
+    const {
+      text: validatedText,
+      image: validatedImage,
+      video: validatedVideo,
+      audio: validatedAudio,
+    } = validateMessageContent(text, image, video, audio);
     const validatedIdempotencyKey = validateIdempotencyKey(idempotencyKey);
 
     const message = await createMessage({
@@ -80,6 +93,7 @@ export async function POST(request: Request) {
       text: validatedText,
       image: validatedImage,
       video: validatedVideo,
+      audio: validatedAudio,
       replyTo,
       idempotencyKey: validatedIdempotencyKey,
     });

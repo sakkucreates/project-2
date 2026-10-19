@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAllUsers, updateUser, getDb } from '@/lib/db';
+import { getAllUsers, updateUser, getDb, getUserTypingTo } from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errors';
 
@@ -61,6 +61,7 @@ export async function GET(request: Request) {
 
       // Sanitize user: hide notes from non-admins
       const isCallerAdmin = authUser?.role === 'admin';
+      const typingTo = getUserTypingTo(user.id);
       return {
         id: user.id,
         name: user.name,
@@ -73,6 +74,7 @@ export async function GET(request: Request) {
         notes: isCallerAdmin ? user.notes : undefined,
         unreadCount,
         lastMessage,
+        typingTo,
       };
     });
 

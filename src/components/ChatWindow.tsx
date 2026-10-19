@@ -25,6 +25,9 @@ import {
   Video,
   Phone,
   Lock,
+  Mic,
+  Play,
+  Pause,
 } from 'lucide-react';
 import { User, Message, Reaction } from '@/types';
 import { Avatar, Spinner } from '@/components/ui';
@@ -41,12 +44,142 @@ export interface ChatMessageItem extends Message {
   failed?: boolean;
 }
 
+/**
+ * WhatsApp-Style Voice Note Audio Bubble Player
+ */
+function AudioBubblePlayer({
+  src,
+  isMe,
+  isDark,
+}: {
+  src: string;
+  isMe: boolean;
+  isDark: boolean;
+}) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const onLoadedMetadata = () => {
+      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+        setDuration(audio.duration);
+      }
+    };
+    const onEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+    };
+
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('loadedmetadata', onLoadedMetadata);
+    audio.addEventListener('durationchange', onLoadedMetadata);
+    audio.addEventListener('ended', onEnded);
+
+    return () => {
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+      audio.removeEventListener('durationchange', onLoadedMetadata);
+      audio.removeEventListener('ended', onEnded);
+    };
+  }, []);
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else {
+      audio.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const time = parseFloat(e.target.value);
+    audio.currentTime = time;
+    setCurrentTime(time);
+  };
+
+  const formatAudioTime = (seconds: number) => {
+    if (!seconds || isNaN(seconds) || !isFinite(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  return (
+    <div className="flex items-center gap-3 py-1 px-0.5 min-w-[210px] sm:min-w-[250px]">
+      <audio ref={audioRef} src={src} preload="metadata" />
+      <button
+        type="button"
+        onClick={togglePlay}
+        className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-transform active:scale-95 shadow-xs cursor-pointer ${
+          isMe
+            ? 'bg-[#00a884] text-white hover:bg-[#02906f]'
+            : 'bg-[#00a884] text-white hover:bg-[#02906f]'
+        }`}
+        title={isPlaying ? 'Pause voice note' : 'Play voice note'}
+        aria-label={isPlaying ? 'Pause voice note' : 'Play voice note'}
+      >
+        {isPlaying ? (
+          <Pause className="w-4 h-4 fill-white text-white" />
+        ) : (
+          <Play className="w-4 h-4 fill-white text-white ml-0.5" />
+        )}
+      </button>
+
+      <div className="flex-1 flex flex-col justify-center min-w-0">
+        <input
+          type="range"
+          min={0}
+          max={duration || 1}
+          step={0.1}
+          value={currentTime}
+          onChange={handleSeek}
+          className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer accent-[#00a884] ${
+            isDark ? 'bg-black/40' : 'bg-black/15'
+          }`}
+        />
+        <div className="flex justify-between items-center text-[10px] mt-1 text-inherit opacity-75 font-mono">
+          <span>{formatAudioTime(currentTime)}</span>
+          <span>{formatAudioTime(duration || 0)}</span>
+        </div>
+      </div>
+
+      <div className="flex-shrink-0 opacity-80">
+        <Mic className="w-4 h-4 text-[#00a884]" />
+      </div>
+    </div>
+  );
+}
+
 export interface ChatWindowProps {
   currentUser: User;
   contact: User;
   messages: ChatMessageItem[];
-  onSendMessage: (text: string, image?: string, video?: string, replyTo?: Message['replyTo']) => Promise<boolean>;
-  onRetryMessage?: (messageId: string, text: string, image?: string, video?: string) => Promise<void>;
+  isContactTyping?: boolean;
+  onSendMessage: (
+    text: string,
+    image?: string,
+    video?: string,
+    replyTo?: Message['replyTo'],
+    audio?: string
+  ) => Promise<boolean>;
+  onRetryMessage?: (
+    messageId: string,
+    text: string,
+    image?: string,
+    video?: string,
+    audio?: string
+  ) => Promise<void>;
   onReactToMessage?: (messageId: string, emoji: string) => Promise<void>;
   onDeleteMessage?: (messageId: string, mode?: 'everyone' | 'forMe') => Promise<boolean>;
   onClearChat?: () => Promise<boolean>;
@@ -60,6 +193,7 @@ export default function ChatWindow({
   currentUser,
   contact,
   messages,
+  isContactTyping = false,
   onSendMessage,
   onRetryMessage,
   onReactToMessage,
@@ -92,12 +226,199 @@ export default function ChatWindow({
   const [starredMsgIds, setStarredMsgIds] = useState<Set<string>>(() => new Set());
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
+  // Feature 1: Voice Notes / Audio Recording State
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Feature 2: Typing Heartbeat Tracking Refs
+  const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTypingSentRef = useRef<number>(0);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const lastActiveImageTriggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Sends typing heartbeat to server and debounces reset after 2.5s
+  const sendTypingHeartbeat = (isTyping: boolean) => {
+    if (!currentUser || !contact) return;
+    const now = Date.now();
+
+    if (!isTyping) {
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+      fetch('/api/users/typing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, receiverId: null, isTyping: false }),
+      }).catch(() => {});
+      return;
+    }
+
+    // Throttle heartbeat to at most once per 1.5s
+    if (now - lastTypingSentRef.current > 1500) {
+      lastTypingSentRef.current = now;
+      fetch('/api/users/typing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, receiverId: contact.id, isTyping: true }),
+      }).catch(() => {});
+    }
+
+    // Automatic reset: clears 2.5 seconds after typing stops
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+    }
+    typingTimerRef.current = setTimeout(() => {
+      fetch('/api/users/typing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, receiverId: null, isTyping: false }),
+      }).catch(() => {});
+    }, 2500);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+      }
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, []);
+
+  // Voice recording handlers
+  const startRecording = async () => {
+    setImageError(null);
+    if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setImageError('Audio recording is not supported in this browser.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+      audioChunksRef.current = [];
+
+      let mimeType = 'audio/webm';
+      if (typeof MediaRecorder !== 'undefined') {
+        if (!MediaRecorder.isTypeSupported('audio/webm')) {
+          if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            mimeType = 'audio/mp4';
+          } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+            mimeType = 'audio/ogg';
+          }
+        }
+      }
+
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.start(200);
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+    } catch {
+      setImageError('Microphone permission denied or device unavailable.');
+    }
+  };
+
+  const cancelRecording = () => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {}
+    }
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach((track) => track.stop());
+      audioStreamRef.current = null;
+    }
+    audioChunksRef.current = [];
+    setIsRecording(false);
+    setRecordingDuration(0);
+  };
+
+  const stopAndSendRecording = () => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') {
+      cancelRecording();
+      return;
+    }
+
+    recorder.onstop = () => {
+      const mime = recorder.mimeType || 'audio/webm';
+      const audioBlob = new Blob(audioChunksRef.current, { type: mime });
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const dataUrl = reader.result as string;
+        if (dataUrl) {
+          const replyToData = replyingTo
+            ? {
+                id: replyingTo.id,
+                text: replyingTo.text,
+                senderName: replyingTo.senderId === currentUser.id ? currentUser.name : contact.name,
+              }
+            : undefined;
+          setReplyingTo(null);
+          await onSendMessage('', undefined, undefined, replyToData, dataUrl);
+        }
+      };
+      reader.readAsDataURL(audioBlob);
+
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach((track) => track.stop());
+        audioStreamRef.current = null;
+      }
+      setIsRecording(false);
+      setRecordingDuration(0);
+    };
+
+    try {
+      recorder.stop();
+    } catch {
+      cancelRecording();
+    }
+  };
+
+  const formatTimer = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
 
   // Close message options menu on click outside or Escape
   useEffect(() => {
@@ -129,9 +450,10 @@ export default function ChatWindow({
     scrollToBottom();
   }, [messages]);
 
-  // Adjust textarea height dynamically
+  // Adjust textarea height dynamically & trigger live typing
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputText(e.target.value);
+    sendTypingHeartbeat(true);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
@@ -235,6 +557,7 @@ export default function ChatWindow({
     if ((!trimmed && !selectedImage && !selectedVideo) || submitting || readingVideo) return;
 
     setSubmitting(true);
+    sendTypingHeartbeat(false);
     setImageError(null);
     setShowEmojiPicker(false);
     const textToSend = trimmed;
@@ -375,22 +698,28 @@ export default function ChatWindow({
               {contact.name}
             </h2>
             <p className="text-[11px] font-medium flex items-center gap-1">
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  contact.status === 'online' ? 'bg-[#00a884]' : isDark ? 'bg-[#8696a0]' : 'bg-[#9E96BE]'
-                }`}
-              ></span>
-              <span
-                className={
-                  contact.status === 'online'
-                    ? 'text-[#00a884]'
-                    : isDark
-                    ? 'text-[#8696a0]'
-                    : 'text-[#667781]'
-                }
-              >
-                {contact.status === 'online' ? 'Online' : 'Offline'}
-              </span>
+              {isContactTyping || contact.typingTo === currentUser.id ? (
+                <span className="text-[#00a884] font-medium animate-pulse">typing...</span>
+              ) : (
+                <>
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      contact.status === 'online' ? 'bg-[#00a884]' : isDark ? 'bg-[#8696a0]' : 'bg-[#9E96BE]'
+                    }`}
+                  ></span>
+                  <span
+                    className={
+                      contact.status === 'online'
+                        ? 'text-[#00a884]'
+                        : isDark
+                        ? 'text-[#8696a0]'
+                        : 'text-[#667781]'
+                    }
+                  >
+                    {contact.status === 'online' ? 'Online' : 'Offline'}
+                  </span>
+                </>
+              )}
             </p>
           </div>
         </div>
@@ -801,6 +1130,30 @@ export default function ChatWindow({
                       </button>
                     )}
 
+                    {/* Quick Hover Delete Button (Feature 4: Delete for Everyone / for Me) */}
+                    {!msg.isOptimistic && !msg.failed && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteTargetMsg(msg);
+                        }}
+                        title="Delete message"
+                        aria-label="Delete message"
+                        className={`absolute top-1.5 right-6 p-1 rounded-full transition-all z-10 opacity-0 group-hover/bubble:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 max-sm:opacity-70 hover:opacity-100 ${
+                          isMe
+                            ? isDark
+                              ? 'text-white/70 hover:text-[#ef4444] hover:bg-black/20'
+                              : 'text-[#111b21]/60 hover:text-[#ef4444] hover:bg-black/10'
+                            : isDark
+                            ? 'text-[#8696a0] hover:text-[#ef4444] hover:bg-[#111b21]'
+                            : 'text-[#667781] hover:text-[#ef4444] hover:bg-[#e9edef]'
+                        }`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
                     {/* Quoted Reply Header */}
                     {msg.replyTo && (
                       <div
@@ -854,6 +1207,13 @@ export default function ChatWindow({
                           preload="metadata"
                           className="max-h-64 max-w-full rounded-xl object-contain bg-black shadow-xs"
                         />
+                      </div>
+                    )}
+
+                    {/* Voice Note Audio Bubble */}
+                    {msg.audio && (
+                      <div className="mb-2 block">
+                        <AudioBubblePlayer src={msg.audio} isMe={isMe} isDark={isDark} />
                       </div>
                     )}
 
@@ -1051,127 +1411,173 @@ export default function ChatWindow({
           />
         )}
 
-        <form
-          onSubmit={handleSend}
-          className={`p-3 border-t flex items-end gap-2 z-10 shadow-xs transition-colors duration-200 ${
-            isDark ? 'bg-[#202c33] border-[#222d34]' : 'bg-[#f0f2f5] border-[#d1d7db]'
-          }`}
-        >
-          {/* Hidden File Input for Image Upload */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            className="hidden"
-            onChange={handleFileSelect}
-          />
-
-          {/* Hidden File Input for Video Upload */}
-          <input
-            ref={videoInputRef}
-            type="file"
-            accept="video/mp4,video/webm,video/ogg,video/quicktime,video/*"
-            className="hidden"
-            onChange={handleVideoSelect}
-          />
-
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={compressingImage || readingVideo || submitting}
-            title="Attach image"
-            aria-label="Attach image"
-            className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50 ${
-              isDark
-                ? 'text-[#aebac1] hover:text-[#00a884] hover:bg-[#111b21]'
-                : 'text-[#54656f] hover:text-[#008069] hover:bg-[#e9edef]'
+        {isRecording ? (
+          /* Live Recording Bar */
+          <div
+            className={`p-3 border-t flex items-center justify-between z-10 shadow-xs transition-colors duration-200 ${
+              isDark ? 'bg-[#202c33] border-[#222d34]' : 'bg-[#f0f2f5] border-[#d1d7db]'
             }`}
           >
-            {compressingImage ? (
-              <Spinner size="sm" className="text-[#00a884]" />
-            ) : (
-              <ImageIcon className="w-5 h-5" />
-            )}
-          </button>
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+              <span className="text-sm font-mono font-bold text-red-500">{formatTimer(recordingDuration)}</span>
+              <span className={`text-xs font-medium truncate hidden sm:inline ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`}>
+                Recording voice note...
+              </span>
+            </div>
 
-          <button
-            type="button"
-            onClick={() => videoInputRef.current?.click()}
-            disabled={readingVideo || compressingImage || submitting}
-            title="Attach video"
-            aria-label="Attach video"
-            className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50 ${
-              isDark
-                ? 'text-[#aebac1] hover:text-[#00a884] hover:bg-[#111b21]'
-                : 'text-[#54656f] hover:text-[#008069] hover:bg-[#e9edef]'
-            }`}
-          >
-            {readingVideo ? (
-              <Spinner size="sm" className="text-[#00a884]" />
-            ) : (
-              <VideoIcon className="w-5 h-5" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowEmojiPicker((prev) => !prev)}
-            disabled={submitting}
-            title={showEmojiPicker ? 'Close emoji picker' : 'Add emoji'}
-            aria-label={showEmojiPicker ? 'Close emoji picker' : 'Add emoji'}
-            className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50 ${
-              showEmojiPicker
-                ? 'text-[#00a884] bg-[#00a884]/15'
-                : isDark
-                ? 'text-[#aebac1] hover:text-[#00a884] hover:bg-[#111b21]'
-                : 'text-[#54656f] hover:text-[#008069] hover:bg-[#e9edef]'
-            }`}
-          >
-            <Smile className="w-5 h-5" />
-          </button>
-
-          <div className="flex-1 relative">
-            <textarea
-              ref={textareaRef}
-              rows={1}
-              value={inputText}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                selectedImage
-                  ? 'Add an optional caption... (Enter to send)'
-                  : selectedVideo
-                  ? 'Add an optional caption for video... (Enter to send)'
-                  : `Type a message... (Enter to send)`
-              }
-              aria-label={`Message ${contact.name}`}
-              disabled={submitting}
-              className={`w-full resize-none min-h-[44px] max-h-32 py-2.5 px-4 rounded-xl text-sm transition-all leading-normal outline-none ${
-                isDark
-                  ? 'bg-[#2a3942] text-[#e9edef] placeholder-[#8696a0] border border-transparent focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]'
-                  : 'bg-white text-[#111b21] placeholder-[#8696a0] border border-transparent focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]'
-              }`}
-            />
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={cancelRecording}
+                title="Discard voice note"
+                aria-label="Discard voice note"
+                className="p-2 text-[#ef4444] hover:bg-[#ef4444]/20 rounded-full transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={stopAndSendRecording}
+                title="Send voice note"
+                aria-label="Send voice note"
+                className="min-h-[42px] min-w-[42px] flex items-center justify-center p-2.5 bg-[#00a884] hover:bg-[#02906f] active:bg-[#008069] text-white rounded-full transition-all shadow-md cursor-pointer active:scale-95"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-
-          <button
-            type="submit"
-            disabled={
-              (!inputText.trim() && !selectedImage && !selectedVideo) ||
-              submitting ||
-              compressingImage ||
-              readingVideo
-            }
-            aria-label="Send message"
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2.5 bg-[#00a884] hover:bg-[#02906f] active:bg-[#008069] disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-full transition-all shadow-md flex-shrink-0"
+        ) : (
+          <form
+            onSubmit={handleSend}
+            className={`p-3 border-t flex items-end gap-2 z-10 shadow-xs transition-colors duration-200 ${
+              isDark ? 'bg-[#202c33] border-[#222d34]' : 'bg-[#f0f2f5] border-[#d1d7db]'
+            }`}
           >
-            {submitting ? (
-              <Spinner size="sm" className="text-white" />
+            {/* Hidden File Input for Image Upload */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+
+            {/* Hidden File Input for Video Upload */}
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/mp4,video/webm,video/ogg,video/quicktime,video/*"
+              className="hidden"
+              onChange={handleVideoSelect}
+            />
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={compressingImage || readingVideo || submitting}
+              title="Attach image"
+              aria-label="Attach image"
+              className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50 ${
+                isDark
+                  ? 'text-[#aebac1] hover:text-[#00a884] hover:bg-[#111b21]'
+                  : 'text-[#54656f] hover:text-[#008069] hover:bg-[#e9edef]'
+              }`}
+            >
+              {compressingImage ? (
+                <Spinner size="sm" className="text-[#00a884]" />
+              ) : (
+                <ImageIcon className="w-5 h-5" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => videoInputRef.current?.click()}
+              disabled={readingVideo || compressingImage || submitting}
+              title="Attach video"
+              aria-label="Attach video"
+              className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50 ${
+                isDark
+                  ? 'text-[#aebac1] hover:text-[#00a884] hover:bg-[#111b21]'
+                  : 'text-[#54656f] hover:text-[#008069] hover:bg-[#e9edef]'
+              }`}
+            >
+              {readingVideo ? (
+                <Spinner size="sm" className="text-[#00a884]" />
+              ) : (
+                <VideoIcon className="w-5 h-5" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowEmojiPicker((prev) => !prev)}
+              disabled={submitting}
+              title={showEmojiPicker ? 'Close emoji picker' : 'Add emoji'}
+              aria-label={showEmojiPicker ? 'Close emoji picker' : 'Add emoji'}
+              className={`min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50 ${
+                showEmojiPicker
+                  ? 'text-[#00a884] bg-[#00a884]/15'
+                  : isDark
+                  ? 'text-[#aebac1] hover:text-[#00a884] hover:bg-[#111b21]'
+                  : 'text-[#54656f] hover:text-[#008069] hover:bg-[#e9edef]'
+              }`}
+            >
+              <Smile className="w-5 h-5" />
+            </button>
+
+            <div className="flex-1 relative">
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                value={inputText}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  selectedImage
+                    ? 'Add an optional caption... (Enter to send)'
+                    : selectedVideo
+                    ? 'Add an optional caption for video... (Enter to send)'
+                    : `Type a message... (Enter to send)`
+                }
+                aria-label={`Message ${contact.name}`}
+                disabled={submitting}
+                className={`w-full resize-none min-h-[44px] max-h-32 py-2.5 px-4 rounded-xl text-sm transition-all leading-normal outline-none ${
+                  isDark
+                    ? 'bg-[#2a3942] text-[#e9edef] placeholder-[#8696a0] border border-transparent focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]'
+                    : 'bg-white text-[#111b21] placeholder-[#8696a0] border border-transparent focus:border-[#00a884] focus:ring-1 focus:ring-[#00a884]'
+                }`}
+              />
+            </div>
+
+            {/* When input box is empty, show WhatsApp-style green Mic button */}
+            {!inputText.trim() && !selectedImage && !selectedVideo ? (
+              <button
+                type="button"
+                onClick={startRecording}
+                title="Record voice note"
+                aria-label="Record voice note"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2.5 bg-[#00a884] hover:bg-[#02906f] active:bg-[#008069] text-white rounded-full transition-all shadow-md flex-shrink-0 cursor-pointer active:scale-95"
+              >
+                <Mic className="w-5 h-5" />
+              </button>
             ) : (
-              <Send className="w-4 h-4" />
+              <button
+                type="submit"
+                disabled={submitting || compressingImage || readingVideo}
+                aria-label="Send message"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2.5 bg-[#00a884] hover:bg-[#02906f] active:bg-[#008069] disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-full transition-all shadow-md flex-shrink-0 cursor-pointer"
+              >
+                {submitting ? (
+                  <Spinner size="sm" className="text-white" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+              </button>
             )}
-          </button>
-        </form>
+          </form>
+        )}
       </div>
 
       {/* Accessible Image Lightbox Modal */}
@@ -1283,27 +1689,23 @@ export default function ChatWindow({
               Delete message?
             </h3>
             <p className={`text-xs mb-6 leading-relaxed ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`}>
-              {deleteTargetMsg.senderId === currentUser.id
-                ? 'You can delete this message for everyone or delete it from your devices only.'
-                : 'You can delete this message from your devices only.'}
+              You can delete this message for everyone or delete it from your devices only.
             </p>
 
             <div className="flex flex-col gap-2">
-              {deleteTargetMsg.senderId === currentUser.id && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const id = deleteTargetMsg.id;
-                    // Instant optimistic removal from UI with 0ms delay
-                    setHiddenMsgIds((prev) => new Set(prev).add(id));
-                    setDeleteTargetMsg(null);
-                    onDeleteMessage?.(id, 'everyone');
-                  }}
-                  className="w-full min-h-[40px] px-4 py-2.5 rounded-xl text-xs font-semibold text-[#ef4444] bg-[#ef4444]/10 hover:bg-[#ef4444]/20 transition-all text-center cursor-pointer active:scale-[0.99]"
-                >
-                  Delete for everyone
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const id = deleteTargetMsg.id;
+                  // Instant optimistic removal from UI with 0ms delay
+                  setHiddenMsgIds((prev) => new Set(prev).add(id));
+                  setDeleteTargetMsg(null);
+                  onDeleteMessage?.(id, 'everyone');
+                }}
+                className="w-full min-h-[40px] px-4 py-2.5 rounded-xl text-xs font-semibold text-[#ef4444] bg-[#ef4444]/10 hover:bg-[#ef4444]/20 transition-all text-center cursor-pointer active:scale-[0.99]"
+              >
+                Delete for everyone
+              </button>
 
               <button
                 type="button"

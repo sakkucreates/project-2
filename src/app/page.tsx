@@ -11,6 +11,7 @@ import ChatWindow, { ChatMessageItem } from '@/components/ChatWindow';
 import { Lock } from 'lucide-react';
 import { Spinner } from '@/components/ui';
 import { useTheme } from '@/context/ThemeContext';
+import { encryptMessage, decryptMessage } from '@/lib/crypto';
 
 type AppState = 'loading' | 'gate' | 'switcher' | 'authenticated' | 'disguise';
 
@@ -28,6 +29,7 @@ export default function HomePage() {
   const [users, setUsers] = useState<(User & { unreadCount?: number; lastMessage?: Message | null })[]>([]);
   const [activeContact, setActiveContact] = useState<User | null>(null);
   const [messages, setMessages] = useState<ChatMessageItem[]>([]);
+  const [isContactTyping, setIsContactTyping] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactsError, setContactsError] = useState<string | null>(null);
@@ -200,7 +202,18 @@ export default function HomePage() {
 
       const data = await res.json();
       if (data.users) {
-        setUsers(data.users);
+        // Feature 5: Decrypt ciphertext for lastMessage preview in contacts list
+        const decryptedUsers = await Promise.all(
+          data.users.map(async (u: User & { lastMessage?: Message | null }) => {
+            if (u.lastMessage?.text && u.lastMessage.text.startsWith('ENC:')) {
+              const plain = await decryptMessage(u.lastMessage.text, u.lastMessage.senderId, u.lastMessage.receiverId);
+              return { ...u, lastMessage: { ...u.lastMessage, text: plain } };
+            }
+            return u;
+          })
+        );
+
+        setUsers(decryptedUsers);
         setContactsError(null);
 
         // Only update active contact status if one has already been explicitly selected by the user
@@ -288,25 +301,44 @@ export default function HomePage() {
       }
 
       const data = await res.json();
+      if (typeof data.isContactTyping === 'boolean') {
+        setIsContactTyping(data.isContactTyping);
+      }
       // Ensure responses are applied only to the active conversation
       if (activeContactRef.current?.id === contactId && Array.isArray(data.messages)) {
+        // Feature 5: Seamless client-side decryption of E2EE ciphertext messages
+        const decryptedList = await Promise.all(
+          data.messages.map(async (m: Message) => {
+            if (m.text && m.text.startsWith('ENC:')) {
+              const plain = await decryptMessage(m.text, m.senderId, m.receiverId);
+              return { ...m, text: plain };
+            }
+            return m;
+          })
+        );
+
         setMessages((prev) => {
           // Keep optimistic messages that haven't landed in canonical database yet
           const pendingOptimistic = prev.filter(
-            (p) => p.isOptimistic && !data.messages.some((m: Message) => m.id === p.id)
+            (p) => p.isOptimistic && !decryptedList.some((m: Message) => m.id === p.id)
           );
 
           // Canonical messages from server
-          const canonical = data.messages.map((m: Message) => ({
+          const canonical = decryptedList.map((m: Message) => ({
             ...m,
             isOptimistic: false,
           }));
 
-          // Avoid unnecessary rerenders if message ids and read states are identical
+          // Avoid unnecessary rerenders if message ids, read states, and content are identical
           const combined = [...canonical, ...pendingOptimistic];
           if (
             prev.length === combined.length &&
-            prev.every((msg, idx) => msg.id === combined[idx]?.id && msg.read === combined[idx]?.read)
+            prev.every(
+              (msg, idx) =>
+                msg.id === combined[idx]?.id &&
+                msg.read === combined[idx]?.read &&
+                msg.text === combined[idx]?.text
+            )
           ) {
             return prev;
           }
@@ -372,9 +404,10 @@ export default function HomePage() {
     video?: string,
     replyTo?: Message['replyTo'],
     existingIdempotencyKey?: string,
-    existingTempId?: string
+    existingTempId?: string,
+    audio?: string
   ): Promise<boolean> => {
-    if (!currentUser || !activeContact || (!text.trim() && !image && !video)) return false;
+    if (!currentUser || !activeContact || (!text.trim() && !image && !video && !audio)) return false;
 
     const trimmedText = text.trim();
     const tempId = existingTempId || `opt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -388,6 +421,7 @@ export default function HomePage() {
       text: trimmedText,
       image,
       video,
+      audio,
       replyTo,
       createdAt: new Date().toISOString(),
       read: false,
@@ -406,14 +440,21 @@ export default function HomePage() {
     }
 
     try {
+      // Feature 5: Scramble at rest with AES-GCM 256-bit E2EE before sending
+      let textToSend = trimmedText;
+      if (trimmedText) {
+        textToSend = await encryptMessage(trimmedText, currentUser.id, activeContact.id);
+      }
+
       const res = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           receiverId: activeContact.id,
-          text: trimmedText || undefined,
+          text: textToSend || undefined,
           image: image || undefined,
           video: video || undefined,
+          audio: audio || undefined,
           replyTo: replyTo || undefined,
           idempotencyKey,
         }),
@@ -427,11 +468,11 @@ export default function HomePage() {
 
       const canonicalMessage: Message = data.message;
 
-      // Reconcile: replace optimistic message with canonical server message
+      // Reconcile: replace optimistic message with canonical server message (preserving plaintext)
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === tempId || (msg.idempotencyKey && msg.idempotencyKey === canonicalMessage.idempotencyKey)
-            ? { ...canonicalMessage, isOptimistic: false, failed: false }
+            ? { ...canonicalMessage, text: trimmedText, isOptimistic: false, failed: false }
             : msg
         )
       );
@@ -451,9 +492,23 @@ export default function HomePage() {
   };
 
   // Retry sending failed message using its original idempotencyKey to prevent duplicate persistence
-  const handleRetryMessage = async (failedMsgId: string, text: string, image?: string, video?: string) => {
+  const handleRetryMessage = async (
+    failedMsgId: string,
+    text: string,
+    image?: string,
+    video?: string,
+    audio?: string
+  ) => {
     const failedItem = messages.find((m) => m.id === failedMsgId);
-    await handleSendMessage(text, image, video, failedItem?.replyTo, failedItem?.idempotencyKey, failedMsgId);
+    await handleSendMessage(
+      text,
+      image,
+      video,
+      failedItem?.replyTo,
+      failedItem?.idempotencyKey,
+      failedMsgId,
+      audio
+    );
   };
 
   // Handle toggling reaction on a message
@@ -543,12 +598,25 @@ export default function HomePage() {
   };
 
   // Emergency Panic Button: switches immediately to Beauty and Joy disguise website for safety
-  const handlePanic = () => {
+  const handlePanic = useCallback(() => {
     if (typeof window !== 'undefined') {
       sessionStorage.setItem(APP_CONFIG.storageKeys.disguiseMode, 'true');
     }
     setAppState('disguise');
-  };
+  }, []);
+
+  // Feature 3: Global Esc (Escape) key shortcut triggers disguise mode immediately from anywhere
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handlePanic();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [handlePanic]);
 
   // Contact selection handler
   const handleSelectContact = (contact: User) => {
@@ -652,6 +720,7 @@ export default function HomePage() {
                 currentUser={currentUser}
                 contact={activeContact}
                 messages={messages}
+                isContactTyping={isContactTyping}
                 onSendMessage={handleSendMessage}
                 onRetryMessage={handleRetryMessage}
                 onReactToMessage={handleReactToMessage}

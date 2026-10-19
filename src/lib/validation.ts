@@ -103,8 +103,9 @@ export function validateNotes(notes: unknown): string {
 export function validateMessageContent(
   text: unknown,
   image: unknown,
-  video?: unknown
-): { text: string; image?: string; video?: string } {
+  video?: unknown,
+  audio?: unknown
+): { text: string; image?: string; video?: string; audio?: string } {
   let validatedText = '';
   if (typeof text === 'string') {
     validatedText = text.trim();
@@ -158,14 +159,37 @@ export function validateMessageContent(
     validatedVideo = trimmedVid;
   }
 
-  if (!validatedText && !validatedImage && !validatedVideo) {
-    throw new ValidationError('Message must contain either text content or an image attachment (or video).');
+  let validatedAudio: string | undefined = undefined;
+  if (audio !== undefined && audio !== null && audio !== '') {
+    if (typeof audio !== 'string') {
+      throw new ValidationError('Audio voice note must be a base64 data URI string.');
+    }
+    const trimmedAud = audio.trim();
+    // Enforce allowed audio MIME types: WebM, OGG, MP4/M4A, WAV, AAC, MPEG
+    const audioMimeMatch = trimmedAud.match(/^data:(audio\/(webm|ogg|mp4|m4a|x-m4a|wav|aac|mpeg));base64,/i);
+    if (!audioMimeMatch) {
+      throw new ValidationError(
+        'Invalid or unsupported audio format. Supported audio formats: WebM, OGG, MP4, WAV, AAC.'
+      );
+    }
+
+    const base64Content = trimmedAud.split(',')[1] || '';
+    const approximateBytes = Math.ceil((base64Content.length * 3) / 4);
+    if (approximateBytes > APP_CONFIG.limits.maxVideoSizeBytes) {
+      throw new ValidationError('Audio voice note exceeds 15MB limit.');
+    }
+    validatedAudio = trimmedAud;
+  }
+
+  if (!validatedText && !validatedImage && !validatedVideo && !validatedAudio) {
+    throw new ValidationError('Message must contain either text content or an image attachment (or video/audio).');
   }
 
   return {
     text: validatedText,
     image: validatedImage,
     video: validatedVideo,
+    audio: validatedAudio,
   };
 }
 

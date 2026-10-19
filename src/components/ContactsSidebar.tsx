@@ -243,12 +243,18 @@ export default function ContactsSidebar({
 
                   <div className="flex items-center justify-between mt-0.5">
                     <p className={`text-xs truncate pr-2 ${isDark ? 'text-[#8696a0]' : 'text-[#667781]'}`}>
-                      {user.lastMessage?.text ||
+                      {user.typingTo === currentUser.id ? (
+                        <span className="text-[#00a884] font-medium animate-pulse">typing...</span>
+                      ) : (
+                        user.lastMessage?.text ||
                         (user.lastMessage?.image
                           ? '📷 Photo'
                           : user.lastMessage?.video
                           ? '🎥 Video'
-                          : 'No messages yet')}
+                          : user.lastMessage?.audio
+                          ? '🎙️ Voice note'
+                          : 'No messages yet')
+                      )}
                     </p>
                     {Boolean(user.unreadCount && user.unreadCount > 0) && (
                       <span className="min-w-4 h-4 px-1.5 rounded-full bg-[#00a884] text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0 shadow-xs">

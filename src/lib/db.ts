@@ -224,7 +224,7 @@ async function getKvMessages(): Promise<Message[] | null> {
 
       for (const m of parsed) {
         const timeBucket = Math.floor(new Date(m.createdAt).getTime() / 3000);
-        const sig = `${m.senderId}_${m.receiverId}_${(m.text || '').trim()}_${m.image || ''}_${m.video || ''}_${timeBucket}`;
+        const sig = `${m.senderId}_${m.receiverId}_${(m.text || '').trim()}_${m.image || ''}_${m.video || ''}_${m.audio || ''}_${timeBucket}`;
 
         if (!seenIds.has(m.id) && !seenSignatures.has(sig)) {
           seenIds.add(m.id);
@@ -593,6 +593,7 @@ export async function createMessage(
   const textTrim = (msgData.text || '').trim();
   const imgStr = msgData.image || '';
   const vidStr = msgData.video || '';
+  const audStr = msgData.audio || '';
   const now = Date.now();
   const idempotencyKey = msgData.idempotencyKey;
 
@@ -613,7 +614,7 @@ export async function createMessage(
   }
 
   // 2. In-Memory Signature Deduplication Check (3-second window)
-  const sig = `${msgData.senderId}_${msgData.receiverId}_${textTrim}_${imgStr}_${vidStr}`;
+  const sig = `${msgData.senderId}_${msgData.receiverId}_${textTrim}_${imgStr}_${vidStr}_${audStr}`;
   const lastSentTime = recentSentSignatures.get(sig);
   if (lastSentTime && now - lastSentTime < 3000) {
     if (memoryStore && Array.isArray(memoryStore.messages)) {
@@ -623,7 +624,8 @@ export async function createMessage(
           m.receiverId === msgData.receiverId &&
           (m.text || '').trim() === textTrim &&
           (m.image || '') === imgStr &&
-          (m.video || '') === vidStr
+          (m.video || '') === vidStr &&
+          (m.audio || '') === audStr
       );
       if (match) return match;
     }
@@ -825,4 +827,34 @@ export async function addReactionToMessage(
   }
 
   return { id: messageId, reactions } as unknown as Message;
+}
+
+// -------------------------------------------------------------
+// Live Typing State Tracking
+// -------------------------------------------------------------
+const activeTypingMap = new Map<string, { to: string; expiresAt: number }>();
+
+/**
+ * Sets or clears real-time typing status for a user.
+ * Typing state automatically expires after 3 seconds of inactivity.
+ */
+export function setUserTyping(userId: string, toUserId: string | null): void {
+  if (!toUserId) {
+    activeTypingMap.delete(userId);
+  } else {
+    activeTypingMap.set(userId, { to: toUserId, expiresAt: Date.now() + 3000 });
+  }
+}
+
+/**
+ * Gets the recipient ID that the given user is currently typing to, if active.
+ */
+export function getUserTypingTo(userId: string): string | null {
+  const item = activeTypingMap.get(userId);
+  if (!item) return null;
+  if (Date.now() > item.expiresAt) {
+    activeTypingMap.delete(userId);
+    return null;
+  }
+  return item.to;
 }
