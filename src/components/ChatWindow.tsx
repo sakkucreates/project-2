@@ -623,7 +623,7 @@ export default function ChatWindow({
   }, [previewLightbox]);
 
   // Aggregate message reactions by emoji count
-  const renderReactionSummary = (reactions?: Reaction[]) => {
+  const renderReactionSummary = (reactions?: Reaction[], messageId?: string) => {
     if (!reactions || reactions.length === 0) return null;
 
     const counts = reactions.reduce((acc, r) => {
@@ -640,17 +640,35 @@ export default function ChatWindow({
           return (
             <button
               key={emoji}
-              onClick={() => onReactToMessage?.(activeReactionMsgId || '', emoji)}
+              onClick={() => onReactToMessage?.(messageId || activeReactionMsgId || '', emoji)}
               title={`${count} ${emoji}`}
               aria-label={`${count} ${emoji} reaction`}
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors border ${
-                userHasReacted
-                  ? 'bg-[#EDE9FE] border-[#7C5CFC] text-[#4C3A8C] font-semibold'
-                  : 'bg-white border-[#E8E3FA] text-[#1E1B2E] hover:border-[#D5CCF5]'
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-all border shadow-xs ${
+                isDark
+                  ? userHasReacted
+                    ? 'bg-[#1f2c34] border-[#00a884] text-[#00a884] font-semibold ring-1 ring-[#00a884]/30'
+                    : 'bg-[#202c33] border-[#2a3942] text-[#e9edef] hover:border-[#3b4a54] hover:bg-[#26353d]'
+                  : userHasReacted
+                  ? 'bg-[#EDE9FE] border-[#7C5CFC] text-[#4C3A8C] font-semibold ring-1 ring-[#7C5CFC]/20'
+                  : 'bg-white border-[#E8E3FA] text-[#1E1B2E] hover:border-[#D5CCF5] hover:bg-[#F9F7FD]'
               }`}
             >
-              <span>{emoji}</span>
-              {count > 1 && <span className="text-[10px]">{count}</span>}
+              <span className="text-sm leading-none">{emoji}</span>
+              {count > 1 && (
+                <span
+                  className={`text-[10px] font-medium ${
+                    isDark
+                      ? userHasReacted
+                        ? 'text-[#00a884]'
+                        : 'text-[#8696a0]'
+                      : userHasReacted
+                      ? 'text-[#4C3A8C]'
+                      : 'text-[#667781]'
+                  }`}
+                >
+                  {count}
+                </span>
+              )}
             </button>
           );
         })}
@@ -1274,7 +1292,7 @@ export default function ChatWindow({
                   </div>
 
                   {/* Reaction Summary Pills */}
-                  {renderReactionSummary(msg.reactions)}
+                  {renderReactionSummary(msg.reactions, msg.id)}
 
                   {/* Failed Message Retry */}
                   {msg.failed && onRetryMessage && (
