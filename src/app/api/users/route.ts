@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getAllUsers, updateUser, getDb, getUserTypingTo } from '@/lib/db';
+import { updateUser, getDb, getUserTypingTo } from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errors';
+import { APP_CONFIG } from '@/lib/config';
+
+// In-memory heartbeat throttle: record last write timestamp per user
+const lastHeartbeatMap = new Map<string, number>();
+const HEARTBEAT_THROTTLE_MS = 15000;
 
 export async function GET(request: Request) {
   try {
@@ -16,14 +21,29 @@ export async function GET(request: Request) {
     const activeUserId = authUser?.id || activeUserIdParam;
 
     if (authUser && (!activeUserIdParam || activeUserIdParam === authUser.id)) {
-      await updateUser(authUser.id, {
-        status: 'online',
-        lastSeen: new Date().toISOString(),
-      });
+      const now = Date.now();
+      const lastHeartbeat = lastHeartbeatMap.get(authUser.id) || 0;
+      if (now - lastHeartbeat >= HEARTBEAT_THROTTLE_MS) {
+        lastHeartbeatMap.set(authUser.id, now);
+        await updateUser(authUser.id, {
+          status: 'online',
+          lastSeen: new Date().toISOString(),
+        }).catch((err) => {
+          console.warn('[Heartbeat] Skipped heartbeat write:', err);
+        });
+      }
     }
 
-    const users = await getAllUsers();
     const db = await getDb();
+    const now = Date.now();
+    const users = (db.users || []).map((user) => {
+      const lastSeenTime = user.lastSeen ? new Date(user.lastSeen).getTime() : 0;
+      const isOnline = now - lastSeenTime < APP_CONFIG.polling.onlineThresholdMs;
+      return {
+        ...user,
+        status: (isOnline ? 'online' : 'offline') as 'online' | 'offline',
+      };
+    });
 
     // Map users with last message info & unread counts relative to activeUserId
     const usersWithStats = users.map((user) => {

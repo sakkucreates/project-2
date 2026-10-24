@@ -3,6 +3,7 @@ import path from 'path';
 import { User, Message, DatabaseSchema, Reaction } from '@/types';
 import { APP_CONFIG } from '@/lib/config';
 import { StorageConfigurationError, StorageOperationError } from '@/lib/errors';
+import { createClient, Client } from '@libsql/client';
 
 // Clean initial state (Only Admin account)
 const INITIAL_DATA: DatabaseSchema = {
@@ -25,6 +26,21 @@ const INITIAL_DATA: DatabaseSchema = {
 
 // Global memory cache for single-process local development fallback
 let memoryStore: DatabaseSchema | null = null;
+
+// Short in-memory read cache to prevent polling loops from exhausting Redis command quotas
+let cachedDbState: { data: DatabaseSchema; timestamp: number } | null = null;
+let cachedKvMessages: { data: Message[]; timestamp: number } | null = null;
+let cachedKvReactions: { data: Record<string, Reaction[]>; timestamp: number } | null = null;
+const CACHE_TTL_MS = 1500;
+
+/**
+ * Explicitly invalidates the high-frequency in-memory read cache.
+ */
+export function invalidateDbCache(): void {
+  cachedDbState = null;
+  cachedKvMessages = null;
+  cachedKvReactions = null;
+}
 
 /**
  * Checks if the current runtime environment is considered production.
@@ -63,6 +79,38 @@ export function cleanKvCredentials(rawUrl?: string, rawToken?: string): { url: s
   return { url, token };
 }
 
+// -------------------------------------------------------------
+// Turso libSQL Client & Table Management
+// -------------------------------------------------------------
+let tursoClient: Client | null = null;
+let tursoTablesInitialized = false;
+
+/**
+ * Resolves Turso Database configuration credentials.
+ */
+export function getTursoConfig(): { url: string; authToken: string } | null {
+  const rawUrl =
+    process.env.TURSO_DATABASE_URL ||
+    (process.env.KV_REST_API_URL?.startsWith('libsql://') || process.env.KV_REST_API_URL?.includes('turso.io')
+      ? process.env.KV_REST_API_URL
+      : '');
+  const rawToken =
+    process.env.TURSO_AUTH_TOKEN ||
+    (process.env.KV_REST_API_URL?.startsWith('libsql://') || process.env.KV_REST_API_URL?.includes('turso.io')
+      ? process.env.KV_REST_API_TOKEN
+      : '');
+
+  if (!rawUrl || !rawToken) return null;
+  return { url: rawUrl.trim(), authToken: rawToken.trim() };
+}
+
+/**
+ * Checks if Turso libSQL database credentials are configured.
+ */
+export function isTursoConfigured(): boolean {
+  return Boolean(getTursoConfig());
+}
+
 /**
  * Checks if Redis KV credentials are configured.
  */
@@ -70,21 +118,285 @@ export function isKvConfigured(): boolean {
   const rawUrl = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
   const rawToken = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!rawUrl || !rawToken) return false;
+  if (rawUrl.startsWith('libsql://') || rawUrl.includes('turso.io')) return false;
   const { url, token } = cleanKvCredentials(rawUrl, rawToken);
   return Boolean(url && token);
 }
 
 /**
+ * Checks if any production persistence backend (Turso libSQL or Upstash Redis) is configured.
+ */
+export function isPersistenceConfigured(): boolean {
+  return isTursoConfigured() || isKvConfigured();
+}
+
+/**
+ * Gets or initializes the Turso client instance.
+ */
+export function getTursoClient(): Client | null {
+  const config = getTursoConfig();
+  if (!config) return null;
+  if (!tursoClient) {
+    tursoClient = createClient({
+      url: config.url,
+      authToken: config.authToken,
+    });
+  }
+  return tursoClient;
+}
+
+/**
+ * Ensures SQLite tables exist in the Turso database and auto-seeds initial admin if empty.
+ */
+export async function ensureTursoTables(): Promise<void> {
+  if (tursoTablesInitialized) return;
+  const client = getTursoClient();
+  if (!client) return;
+
+  try {
+    await client.batch(
+      [
+        `CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          code TEXT NOT NULL UNIQUE,
+          role TEXT NOT NULL,
+          avatar TEXT NOT NULL,
+          status TEXT NOT NULL,
+          lastSeen TEXT NOT NULL,
+          createdAt TEXT NOT NULL,
+          notes TEXT
+        );`,
+        `CREATE TABLE IF NOT EXISTS messages (
+          id TEXT PRIMARY KEY,
+          senderId TEXT NOT NULL,
+          receiverId TEXT NOT NULL,
+          text TEXT,
+          image TEXT,
+          video TEXT,
+          audio TEXT,
+          createdAt TEXT NOT NULL,
+          read INTEGER NOT NULL DEFAULT 0,
+          reactions TEXT,
+          idempotencyKey TEXT,
+          replyTo TEXT,
+          deletedFor TEXT
+        );`,
+        `CREATE TABLE IF NOT EXISTS meta (
+          key TEXT PRIMARY KEY,
+          value TEXT
+        );`,
+      ],
+      'write'
+    );
+
+    // Auto-seed admin user if users table is empty
+    const userCount = await client.execute("SELECT COUNT(*) as count FROM users WHERE id = 'admin_root'");
+    if (Number(userCount.rows[0]?.count || 0) === 0) {
+      await client.execute({
+        sql: `INSERT OR IGNORE INTO users (id, name, code, role, avatar, status, lastSeen, createdAt, notes)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          INITIAL_DATA.users[0].id,
+          INITIAL_DATA.users[0].name,
+          INITIAL_DATA.users[0].code,
+          INITIAL_DATA.users[0].role,
+          INITIAL_DATA.users[0].avatar,
+          INITIAL_DATA.users[0].status,
+          INITIAL_DATA.users[0].lastSeen,
+          INITIAL_DATA.users[0].createdAt,
+          INITIAL_DATA.users[0].notes || null,
+        ],
+      });
+    }
+
+    tursoTablesInitialized = true;
+  } catch (err) {
+    console.warn('[Turso Init Warning] Could not ensure tables:', err);
+  }
+}
+
+function rowToUser(row: Record<string, unknown>): User {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    code: String(row.code),
+    role: row.role === 'admin' ? 'admin' : 'user',
+    avatar: String(row.avatar || '👤'),
+    status: row.status === 'online' ? 'online' : 'offline',
+    lastSeen: String(row.lastSeen || new Date().toISOString()),
+    createdAt: String(row.createdAt || new Date().toISOString()),
+    notes: row.notes ? String(row.notes) : undefined,
+  };
+}
+
+function rowToMessage(row: Record<string, unknown>): Message {
+  let reactions: Reaction[] = [];
+  if (row.reactions) {
+    try {
+      reactions = typeof row.reactions === 'string' ? JSON.parse(row.reactions) : (row.reactions as Reaction[]);
+    } catch {}
+  }
+  let replyTo = undefined;
+  if (row.replyTo) {
+    try {
+      replyTo = typeof row.replyTo === 'string' ? JSON.parse(row.replyTo) : row.replyTo;
+    } catch {}
+  }
+  let deletedFor: string[] | undefined = undefined;
+  if (row.deletedFor) {
+    try {
+      deletedFor = typeof row.deletedFor === 'string' ? JSON.parse(row.deletedFor) : (row.deletedFor as string[]);
+    } catch {}
+  }
+
+  return {
+    id: String(row.id),
+    senderId: String(row.senderId),
+    receiverId: String(row.receiverId),
+    text: String(row.text || ''),
+    image: row.image ? String(row.image) : undefined,
+    video: row.video ? String(row.video) : undefined,
+    audio: row.audio ? String(row.audio) : undefined,
+    createdAt: String(row.createdAt),
+    read: Boolean(row.read),
+    reactions,
+    idempotencyKey: row.idempotencyKey ? String(row.idempotencyKey) : undefined,
+    replyTo: replyTo as Message['replyTo'],
+    deletedFor,
+  };
+}
+
+async function getTursoUsers(): Promise<User[] | null> {
+  const client = getTursoClient();
+  if (!client) return null;
+  await ensureTursoTables();
+  try {
+    const res = await client.execute('SELECT * FROM users');
+    return res.rows.map(rowToUser);
+  } catch (err) {
+    console.error('[Turso Error] getTursoUsers failed:', err);
+    throw new StorageOperationError(`Turso query failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function saveTursoUsers(users: User[]): Promise<boolean> {
+  const client = getTursoClient();
+  if (!client) return false;
+  await ensureTursoTables();
+  try {
+    for (const u of users) {
+      await client.execute({
+        sql: `INSERT INTO users (id, name, code, role, avatar, status, lastSeen, createdAt, notes)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                code = excluded.code,
+                role = excluded.role,
+                avatar = excluded.avatar,
+                status = excluded.status,
+                lastSeen = excluded.lastSeen,
+                notes = excluded.notes;`,
+        args: [u.id, u.name, u.code, u.role, u.avatar, u.status, u.lastSeen, u.createdAt, u.notes || null],
+      });
+    }
+    return true;
+  } catch (err) {
+    console.error('[Turso Error] saveTursoUsers failed:', err);
+    throw new StorageOperationError(`Turso save users failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function getTursoMessages(): Promise<Message[] | null> {
+  const client = getTursoClient();
+  if (!client) return null;
+  await ensureTursoTables();
+  try {
+    const res = await client.execute('SELECT * FROM messages ORDER BY createdAt ASC');
+    return res.rows.map(rowToMessage);
+  } catch (err) {
+    console.error('[Turso Error] getTursoMessages failed:', err);
+    throw new StorageOperationError(`Turso get messages failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function pushTursoMessage(m: Message): Promise<boolean> {
+  const client = getTursoClient();
+  if (!client) return false;
+  await ensureTursoTables();
+  try {
+    await client.execute({
+      sql: `INSERT OR REPLACE INTO messages (id, senderId, receiverId, text, image, video, audio, createdAt, read, reactions, idempotencyKey, replyTo, deletedFor)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        m.id,
+        m.senderId,
+        m.receiverId,
+        m.text || '',
+        m.image || null,
+        m.video || null,
+        m.audio || null,
+        m.createdAt,
+        m.read ? 1 : 0,
+        m.reactions ? JSON.stringify(m.reactions) : null,
+        m.idempotencyKey || null,
+        m.replyTo ? JSON.stringify(m.replyTo) : null,
+        m.deletedFor ? JSON.stringify(m.deletedFor) : null,
+      ],
+    });
+    return true;
+  } catch (err) {
+    console.error('[Turso Error] pushTursoMessage failed:', err);
+    throw new StorageOperationError(`Turso push message failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function saveTursoMessages(messages: Message[]): Promise<boolean> {
+  const client = getTursoClient();
+  if (!client) return false;
+  await ensureTursoTables();
+  try {
+    const statements = [
+      { sql: 'DELETE FROM messages', args: [] },
+      ...messages.map((m) => ({
+        sql: `INSERT OR REPLACE INTO messages (id, senderId, receiverId, text, image, video, audio, createdAt, read, reactions, idempotencyKey, replyTo, deletedFor)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          m.id,
+          m.senderId,
+          m.receiverId,
+          m.text || '',
+          m.image || null,
+          m.video || null,
+          m.audio || null,
+          m.createdAt,
+          m.read ? 1 : 0,
+          m.reactions ? JSON.stringify(m.reactions) : null,
+          m.idempotencyKey || null,
+          m.replyTo ? JSON.stringify(m.replyTo) : null,
+          m.deletedFor ? JSON.stringify(m.deletedFor) : null,
+        ],
+      })),
+    ];
+    await client.batch(statements, 'write');
+    return true;
+  } catch (err) {
+    console.error('[Turso Error] saveTursoMessages failed:', err);
+    throw new StorageOperationError(`Turso save messages failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
  * Validates that durable persistence is available before executing state-changing operations.
- * In production, Upstash Redis KV is strictly required to prevent silent data loss.
+ * In production, Turso libSQL or Upstash Redis KV is strictly required to prevent silent data loss.
  */
 export function assertPersistenceAvailable(operationName: string = 'storage operation'): void {
-  if (isProductionEnvironment() && !isKvConfigured()) {
+  if (isProductionEnvironment() && !isPersistenceConfigured()) {
     console.error(
-      `[Storage Diagnostic] Production persistence (Upstash Redis) is missing for "${operationName}". In-memory and /tmp fallbacks are disallowed in production.`
+      `[Storage Diagnostic] Production persistence (Turso or Upstash Redis) is missing for "${operationName}". In-memory and /tmp fallbacks are disallowed in production.`
     );
     throw new StorageConfigurationError(
-      'Production persistence layer (Upstash Redis) is not configured. Operation aborted to prevent silent data loss.'
+      'Production persistence layer (Turso libSQL or Upstash Redis) is not configured. Operation aborted to prevent silent data loss.'
     );
   }
 }
@@ -140,6 +452,29 @@ export async function executeKvCommand(
           continue;
         }
         const errorDetail = await res.text().catch(() => '');
+        const lowerDetail = errorDetail.toLowerCase();
+
+        if (lowerDetail.includes('noperm') || lowerDetail.includes('no permissions')) {
+          throw new StorageOperationError(
+            'Upstash Permission Denied: You are using a Read-Only Token. Please copy the primary UPSTASH_REDIS_REST_TOKEN (read-write) from the Upstash console.'
+          );
+        }
+
+        if (
+          lowerDetail.includes('fixed plan limits') ||
+          lowerDetail.includes('daily limit')
+        ) {
+          throw new StorageOperationError(
+            'Upstash Redis daily command limit reached (10,000 commands/day). Please upgrade your Upstash database plan to Pay-As-You-Go or configure a new database in console.upstash.com.'
+          );
+        }
+
+        if (res.status === 403 || res.status === 401) {
+          throw new StorageOperationError(
+            `Upstash Authentication Error (HTTP ${res.status}): Please check that your UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are correct.`
+          );
+        }
+
         throw new StorageOperationError(
           `Upstash KV HTTP error ${res.status}${errorDetail ? ': ' + errorDetail.slice(0, 100) : ''}`
         );
@@ -147,7 +482,24 @@ export async function executeKvCommand(
 
       const data = await res.json();
       if (data && typeof data === 'object' && 'error' in data && data.error) {
-        throw new StorageOperationError(`Upstash Redis error: ${String(data.error)}`);
+        const errStr = String(data.error);
+        const lowerErr = errStr.toLowerCase();
+
+        if (lowerErr.includes('noperm') || lowerErr.includes('no permissions')) {
+          throw new StorageOperationError(
+            'Upstash Permission Denied: You are using a Read-Only Token. Please copy the primary UPSTASH_REDIS_REST_TOKEN (read-write) from the Upstash console.'
+          );
+        }
+
+        if (
+          lowerErr.includes('fixed plan limits') ||
+          lowerErr.includes('daily limit')
+        ) {
+          throw new StorageOperationError(
+            'Upstash Redis daily command limit reached (10,000 commands/day). Please upgrade your Upstash database plan to Pay-As-You-Go or configure a new database in console.upstash.com.'
+          );
+        }
+        throw new StorageOperationError(`Upstash Redis error: ${errStr}`);
       }
 
       return data ? data.result : null;
@@ -167,10 +519,13 @@ export async function executeKvCommand(
 }
 
 /**
- * Fetches users from KV store.
+ * Fetches users from KV store or Turso.
  * Reads lumachat_users first; falls back to legacy chatpass_users for backward compatibility.
  */
 async function getKvUsers(): Promise<User[] | null> {
+  if (isTursoConfigured()) {
+    return getTursoUsers();
+  }
   if (!isKvConfigured()) return null;
 
   let result = await executeKvCommand(['GET', 'lumachat_users']);
@@ -190,19 +545,36 @@ async function getKvUsers(): Promise<User[] | null> {
 }
 
 /**
- * Saves users list to KV store (lumachat_users key).
+ * Saves users list to KV store (lumachat_users key) or Turso.
  */
 async function saveKvUsers(users: User[]): Promise<boolean> {
+  cachedDbState = null;
+  if (isTursoConfigured()) {
+    return saveTursoUsers(users);
+  }
   if (!isKvConfigured()) return false;
   const res = await executeKvCommand(['SET', 'lumachat_users', JSON.stringify(users)]);
   return res !== null;
 }
 
 /**
- * Atomic Redis list read via LRANGE with content & ID deduplication.
+ * Atomic Redis list read via LRANGE with content & ID deduplication, or Turso query.
  * Reads lumachat_messages first; falls back to legacy chatpass_messages.
  */
 async function getKvMessages(): Promise<Message[] | null> {
+  const now = Date.now();
+  if (cachedKvMessages && now - cachedKvMessages.timestamp < CACHE_TTL_MS) {
+    return cachedKvMessages.data;
+  }
+
+  if (isTursoConfigured()) {
+    const msgs = await getTursoMessages();
+    if (msgs) {
+      cachedKvMessages = { data: msgs, timestamp: Date.now() };
+    }
+    return msgs;
+  }
+
   if (!isKvConfigured()) return null;
 
   let result = await executeKvCommand(['LRANGE', 'lumachat_messages', '0', '-1']);
@@ -232,6 +604,7 @@ async function getKvMessages(): Promise<Message[] | null> {
           uniqueMessages.push(m);
         }
       }
+      cachedKvMessages = { data: uniqueMessages, timestamp: Date.now() };
       return uniqueMessages;
     } catch {
       return null;
@@ -241,9 +614,14 @@ async function getKvMessages(): Promise<Message[] | null> {
 }
 
 /**
- * Appends a message to Redis list using atomic RPUSH.
+ * Appends a message to Redis list using atomic RPUSH or Turso insert.
  */
 async function pushKvMessage(message: Message): Promise<boolean> {
+  cachedDbState = null;
+  cachedKvMessages = null;
+  if (isTursoConfigured()) {
+    return pushTursoMessage(message);
+  }
   if (!isKvConfigured()) return false;
   // RPUSH is non-idempotent; do not auto-retry in ways that duplicate messages
   const res = await executeKvCommand(['RPUSH', 'lumachat_messages', JSON.stringify(message)], {
@@ -254,11 +632,27 @@ async function pushKvMessage(message: Message): Promise<boolean> {
 }
 
 /**
- * Reads emoji reactions from dedicated KV key.
+ * Reads emoji reactions from dedicated KV key or Turso messages.
  * Reads lumachat_reactions first; falls back to legacy chatpass_reactions.
  */
 async function getKvReactions(): Promise<Record<string, Reaction[]>> {
+  if (isTursoConfigured()) {
+    const msgs = await getKvMessages();
+    const map: Record<string, Reaction[]> = {};
+    if (msgs) {
+      for (const m of msgs) {
+        if (m.reactions && m.reactions.length > 0) {
+          map[m.id] = m.reactions;
+        }
+      }
+    }
+    return map;
+  }
   if (!isKvConfigured()) return {};
+  const now = Date.now();
+  if (cachedKvReactions && now - cachedKvReactions.timestamp < CACHE_TTL_MS) {
+    return cachedKvReactions.data;
+  }
   try {
     let result = await executeKvCommand(['GET', 'lumachat_reactions']);
     if (!result) {
@@ -266,7 +660,9 @@ async function getKvReactions(): Promise<Record<string, Reaction[]>> {
     }
     if (result) {
       const parsed = typeof result === 'string' ? JSON.parse(result) : result;
-      return parsed && typeof parsed === 'object' ? parsed : {};
+      const data = parsed && typeof parsed === 'object' ? parsed : {};
+      cachedKvReactions = { data, timestamp: Date.now() };
+      return data;
     }
   } catch (err) {
     console.warn('[Storage Warning] Could not read KV reactions:', err);
@@ -275,12 +671,23 @@ async function getKvReactions(): Promise<Record<string, Reaction[]>> {
 }
 
 /**
- * Saves reactions to dedicated KV key.
+ * Saves reactions to dedicated KV key or Turso messages table.
  */
 async function saveKvReaction(
   messageId: string,
   reactions: Reaction[]
 ): Promise<boolean> {
+  cachedKvReactions = null;
+  if (isTursoConfigured()) {
+    const client = getTursoClient();
+    if (!client) return false;
+    await ensureTursoTables();
+    await client.execute({
+      sql: 'UPDATE messages SET reactions = ? WHERE id = ?',
+      args: [reactions.length > 0 ? JSON.stringify(reactions) : null, messageId],
+    });
+    return true;
+  }
   if (!isKvConfigured()) return false;
   const current = await getKvReactions();
   if (reactions.length === 0) {
@@ -293,10 +700,16 @@ async function saveKvReaction(
 }
 
 /**
- * Atomically replaces the stored messages in Redis without a dangerous empty-read window.
- * Uses a unique temporary key + atomic RENAME.
+ * Atomically replaces the stored messages in Redis or Turso.
  */
 async function saveKvMessages(messages: Message[]): Promise<boolean> {
+  cachedDbState = null;
+  cachedKvMessages = null;
+
+  if (isTursoConfigured()) {
+    return saveTursoMessages(messages);
+  }
+
   if (!isKvConfigured()) return false;
 
   if (messages.length === 0) {
@@ -338,12 +751,17 @@ function getDbFilePath(): string {
 
 /**
  * Reads the full database state.
- * Priority 1: Upstash Redis KV
+ * Priority 1: Turso libSQL or Upstash Redis KV (with short TTL in-memory cache)
  * Priority 2: Local JSON file (dev only)
  * Priority 3: Memory store (dev only)
  */
 export async function getDb(): Promise<DatabaseSchema> {
-  if (isKvConfigured()) {
+  const now = Date.now();
+  if (cachedDbState && now - cachedDbState.timestamp < CACHE_TTL_MS) {
+    return cachedDbState.data;
+  }
+
+  if (isPersistenceConfigured()) {
     try {
       const rawUsers = await getKvUsers();
       const rawMessages = await getKvMessages();
@@ -352,18 +770,36 @@ export async function getDb(): Promise<DatabaseSchema> {
       if (!Array.isArray(rawUsers) || rawUsers.length === 0) {
         await saveKvUsers(INITIAL_DATA.users).catch(() => {});
       }
-      return {
+      const result: DatabaseSchema = {
         adminCode: INITIAL_DATA.adminCode,
         users,
         messages,
       };
+      cachedDbState = { data: result, timestamp: Date.now() };
+      memoryStore = result;
+      return result;
     } catch (kvErr) {
       if (isProductionEnvironment()) {
+        // Resilient fallback: if we have cached DB or memoryStore, serve it rather than crashing
+        if (cachedDbState) {
+          console.warn('[Storage Resilient Fallback] Serving cached DB state after persistence failure:', kvErr);
+          return cachedDbState.data;
+        }
+        if (memoryStore) {
+          console.warn('[Storage Resilient Fallback] Serving memoryStore after persistence failure:', kvErr);
+          return memoryStore;
+        }
+        const errMessage = kvErr instanceof Error ? kvErr.message : String(kvErr);
+        if (errMessage.includes('fetch failed')) {
+          throw new StorageOperationError(
+            'Failed to connect to production database (fetch failed). Please verify that your database credentials are set correctly in your Vercel Project Settings > Environment Variables.'
+          );
+        }
         throw new StorageOperationError(
-          `Failed to read from production database: ${kvErr instanceof Error ? kvErr.message : String(kvErr)}`
+          `Failed to read from production database: ${errMessage}`
         );
       }
-      console.warn('[Storage Warning] KV fetch failed in dev, falling back to local file:', kvErr);
+      console.warn('[Storage Warning] Persistence fetch failed in dev, falling back to local file:', kvErr);
     }
   }
 
@@ -378,6 +814,7 @@ export async function getDb(): Promise<DatabaseSchema> {
         const parsed = JSON.parse(fileData);
         if (parsed && Array.isArray(parsed.users)) {
           memoryStore = parsed;
+          cachedDbState = { data: parsed, timestamp: Date.now() };
           return parsed;
         }
       }
@@ -388,10 +825,12 @@ export async function getDb(): Promise<DatabaseSchema> {
 
   // Dev fallback: memory
   if (memoryStore) {
+    cachedDbState = { data: memoryStore, timestamp: Date.now() };
     return memoryStore;
   }
 
   memoryStore = JSON.parse(JSON.stringify(INITIAL_DATA));
+  cachedDbState = { data: memoryStore!, timestamp: Date.now() };
   await saveDb(memoryStore!).catch(() => {});
   return memoryStore!;
 }
@@ -402,8 +841,15 @@ export async function getDb(): Promise<DatabaseSchema> {
 export async function saveDb(data: DatabaseSchema): Promise<void> {
   assertPersistenceAvailable('saveDb');
 
-  if (isKvConfigured()) {
+  cachedDbState = null;
+  cachedKvMessages = null;
+  cachedKvReactions = null;
+
+  if (isPersistenceConfigured()) {
     await saveKvUsers(data.users);
+    if (data.messages && data.messages.length > 0) {
+      await saveKvMessages(data.messages);
+    }
     return;
   }
 
@@ -422,9 +868,23 @@ export async function saveDb(data: DatabaseSchema): Promise<void> {
 export async function resetDatabase(): Promise<DatabaseSchema> {
   assertPersistenceAvailable('resetDatabase');
 
+  cachedDbState = null;
+  cachedKvMessages = null;
+  cachedKvReactions = null;
   memoryStore = JSON.parse(JSON.stringify(INITIAL_DATA));
 
-  if (isKvConfigured()) {
+  if (isTursoConfigured()) {
+    const client = getTursoClient();
+    if (client) {
+      await client.batch(
+        [
+          { sql: 'DELETE FROM messages', args: [] },
+          { sql: 'DELETE FROM users WHERE id != ?', args: [APP_CONFIG.adminRootId] },
+        ],
+        'write'
+      ).catch(() => null);
+    }
+  } else if (isKvConfigured()) {
     await saveKvUsers(INITIAL_DATA.users);
     await executeKvCommand(['DEL', 'lumachat_messages']).catch(() => null);
     await executeKvCommand(['DEL', 'lumachat_reactions']).catch(() => null);
@@ -495,7 +955,7 @@ export async function createUser(
 
   db.users.push(newUser);
 
-  if (isKvConfigured()) {
+  if (isPersistenceConfigured()) {
     const success = await saveKvUsers(db.users);
     if (!success) {
       throw new StorageOperationError('Failed to persist new user to storage.');
@@ -516,7 +976,7 @@ export async function updateUser(id: string, updates: Partial<User>): Promise<Us
 
   db.users[index] = { ...db.users[index], ...updates };
 
-  if (isKvConfigured()) {
+  if (isPersistenceConfigured()) {
     const success = await saveKvUsers(db.users);
     if (!success) {
       throw new StorageOperationError('Failed to persist user update to storage.');
@@ -540,7 +1000,7 @@ export async function deleteUser(id: string): Promise<boolean> {
   db.users = db.users.filter((u) => u.id !== id);
   db.messages = db.messages.filter((m) => m.senderId !== id && m.receiverId !== id);
 
-  if (isKvConfigured()) {
+  if (isPersistenceConfigured()) {
     await saveKvUsers(db.users);
     await saveKvMessages(db.messages);
   } else {
@@ -558,7 +1018,7 @@ export async function getConversationMessages(
   viewerId?: string
 ): Promise<Message[]> {
   const allMessages =
-    isKvConfigured() ? (await getKvMessages()) || [] : (await getDb()).messages;
+    isPersistenceConfigured() ? (await getKvMessages()) || [] : (await getDb()).messages;
 
   const msgs = allMessages
     .filter(
@@ -569,7 +1029,7 @@ export async function getConversationMessages(
     )
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-  if (isKvConfigured()) {
+  if (isKvConfigured() && !isTursoConfigured()) {
     const kvReactions: Record<string, Reaction[]> = await getKvReactions().catch(
       () => ({} as Record<string, Reaction[]>)
     );
@@ -600,7 +1060,7 @@ export async function createMessage(
   // 1. Check for existing message by Idempotency Key (scoped to conversation)
   if (idempotencyKey) {
     const existingMessages =
-      isKvConfigured() ? (await getKvMessages()) || [] : (await getDb()).messages;
+      isPersistenceConfigured() ? (await getKvMessages()) || [] : (await getDb()).messages;
 
     const existingMatch = existingMessages.find(
       (m) =>
@@ -651,10 +1111,10 @@ export async function createMessage(
     }
   }
 
-  if (isKvConfigured()) {
+  if (isPersistenceConfigured()) {
     const success = await pushKvMessage(newMsg);
     if (!success) {
-      throw new StorageOperationError('Failed to persist message to Redis store.');
+      throw new StorageOperationError('Failed to persist message to storage.');
     }
   } else {
     const db = await getDb();
@@ -680,7 +1140,7 @@ export async function markMessagesAsRead(senderId: string, receiverId: string): 
   });
 
   if (updated) {
-    if (isKvConfigured()) {
+    if (isPersistenceConfigured()) {
       await saveKvMessages(db.messages);
     } else {
       await saveDb(db);
@@ -713,7 +1173,7 @@ export async function clearConversationMessages(
     );
   }
 
-  if (isKvConfigured()) {
+  if (isPersistenceConfigured()) {
     await saveKvMessages(db.messages);
   } else {
     await saveDb(db);
@@ -733,7 +1193,7 @@ export async function deleteMessage(messageId: string): Promise<boolean> {
     memoryStore.messages = memoryStore.messages.filter((m) => m.id !== messageId);
   }
 
-  if (isKvConfigured()) {
+  if (isPersistenceConfigured()) {
     await saveKvMessages(db.messages);
   } else {
     await saveDb(db);
@@ -764,7 +1224,7 @@ export async function deleteMessageForUser(messageId: string, userId: string): P
     }
   }
 
-  if (isKvConfigured()) {
+  if (isPersistenceConfigured()) {
     await saveKvMessages(db.messages);
   } else {
     await saveDb(db);
@@ -782,7 +1242,7 @@ export async function addReactionToMessage(
 
   let reactions: Reaction[] = [];
 
-  if (isKvConfigured()) {
+  if (isPersistenceConfigured()) {
     const kvReactions: Record<string, Reaction[]> = await getKvReactions().catch(
       () => ({} as Record<string, Reaction[]>)
     );
@@ -806,7 +1266,7 @@ export async function addReactionToMessage(
     }
   }
 
-  if (isKvConfigured()) {
+  if (isPersistenceConfigured()) {
     const success = await saveKvReaction(messageId, reactions);
     if (!success) {
       throw new StorageOperationError('Failed to persist reaction to storage.');
