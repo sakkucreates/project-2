@@ -945,6 +945,17 @@ export async function findUserByCode(code: string): Promise<User | null> {
 }
 
 export async function getUserById(id: string): Promise<User | null> {
+  if (isTursoConfigured()) {
+    const client = getTursoClient();
+    if (client) {
+      await ensureTursoTables();
+      const res = await client.execute({
+        sql: 'SELECT * FROM users WHERE id = ? LIMIT 1',
+        args: [id],
+      });
+      return res.rows.length > 0 ? rowToUser(res.rows[0]) : null;
+    }
+  }
   const db = await getDb();
   return db.users.find((u) => u.id === id) || null;
 }
@@ -956,7 +967,10 @@ export async function getAllUsers(): Promise<User[]> {
 
   return rawUsers.map((user) => {
     const lastSeenTime = user.lastSeen ? new Date(user.lastSeen).getTime() : 0;
-    const isOnline = now - lastSeenTime < APP_CONFIG.polling.onlineThresholdMs;
+    const isOnline =
+      user.status === 'offline'
+        ? false
+        : now - lastSeenTime < APP_CONFIG.polling.onlineThresholdMs;
     return {
       ...user,
       status: isOnline ? 'online' : 'offline',
@@ -994,6 +1008,33 @@ export async function createUser(
 
 export async function updateUser(id: string, updates: Partial<User>): Promise<User | null> {
   assertPersistenceAvailable('updateUser');
+
+  if (isTursoConfigured()) {
+    const client = getTursoClient();
+    if (client) {
+      await ensureTursoTables();
+      const entries = Object.entries(updates).filter(([k]) => k !== 'id');
+      if (entries.length > 0) {
+        const setClauses = entries.map(([k]) => `${k} = ?`).join(', ');
+        const args: (string | number | null)[] = entries.map(([, v]) =>
+          v === undefined || v === null ? null : typeof v === 'object' ? JSON.stringify(v) : (v as string | number)
+        );
+        args.push(id);
+        await client.execute({
+          sql: `UPDATE users SET ${setClauses} WHERE id = ?`,
+          args,
+        });
+      }
+      cachedDbState = null;
+      if (memoryStore && Array.isArray(memoryStore.users)) {
+        const idx = memoryStore.users.findIndex((u) => u.id === id);
+        if (idx !== -1) {
+          memoryStore.users[idx] = { ...memoryStore.users[idx], ...updates };
+        }
+      }
+      return getUserById(id);
+    }
+  }
 
   const db = await getDb();
   const index = db.users.findIndex((u) => u.id === id);

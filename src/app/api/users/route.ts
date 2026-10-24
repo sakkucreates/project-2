@@ -6,7 +6,7 @@ import { APP_CONFIG } from '@/lib/config';
 
 // In-memory heartbeat throttle: record last write timestamp per user
 const lastHeartbeatMap = new Map<string, number>();
-const HEARTBEAT_THROTTLE_MS = 15000;
+const HEARTBEAT_THROTTLE_MS = 1500;
 
 export async function GET(request: Request) {
   try {
@@ -38,7 +38,12 @@ export async function GET(request: Request) {
     const now = Date.now();
     const users = (db.users || []).map((user) => {
       const lastSeenTime = user.lastSeen ? new Date(user.lastSeen).getTime() : 0;
-      const isOnline = now - lastSeenTime < APP_CONFIG.polling.onlineThresholdMs;
+      const isOnline =
+        user.id === activeUserId
+          ? true
+          : user.status === 'offline'
+          ? false
+          : now - lastSeenTime < APP_CONFIG.polling.onlineThresholdMs;
       return {
         ...user,
         status: (isOnline ? 'online' : 'offline') as 'online' | 'offline',

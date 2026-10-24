@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     if (user) {
       await updateUser(user.id, {
         status: 'offline',
-        lastSeen: new Date(Date.now() - 10000).toISOString(),
+        lastSeen: new Date(Date.now() - 3600000).toISOString(),
       });
     }
 

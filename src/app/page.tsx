@@ -219,7 +219,11 @@ export default function HomePage() {
         // Only update active contact status if one has already been explicitly selected by the user
         if (activeContactRef.current) {
           const fresh = data.users.find((u: User) => u.id === activeContactRef.current?.id);
-          if (fresh && fresh.status !== activeContactRef.current.status) {
+          if (
+            fresh &&
+            (fresh.status !== activeContactRef.current.status ||
+             fresh.typingTo !== activeContactRef.current.typingTo)
+          ) {
             setActiveContact(fresh);
           }
         }
@@ -232,7 +236,7 @@ export default function HomePage() {
     }
   }, [currentUser]);
 
-  // Presence heartbeat every 6 seconds
+  // Presence heartbeat every 2 seconds
   useEffect(() => {
     if (appState !== 'authenticated' || !currentUser) return;
 
@@ -245,7 +249,7 @@ export default function HomePage() {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         fetchUsers();
       }
-    }, APP_CONFIG.polling.onlineThresholdMs);
+    }, APP_CONFIG.polling.userPresenceIntervalMs);
 
     // Visibility change sync
     const handleVisibilityChange = () => {

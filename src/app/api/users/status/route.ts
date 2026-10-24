@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       status: validatedStatus,
       lastSeen:
         validatedStatus === 'offline'
-          ? new Date(Date.now() - 10000).toISOString()
+          ? new Date(Date.now() - 3600000).toISOString()
           : new Date().toISOString(),
     });
 
