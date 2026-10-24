@@ -7,11 +7,22 @@
 
 const E2EE_SALT = new TextEncoder().encode('lumachat-e2ee-v1-salt-key-derivation');
 
+// In-memory key cache to avoid re-running expensive PBKDF2 (100,000 iterations) on every message
+const conversationKeyCache = new Map<string, CryptoKey>();
+// In-memory plaintext cache for decrypted messages to eliminate polling lag
+const decryptedMessageCache = new Map<string, string>();
+
 /**
  * Derives an AES-GCM 256-bit CryptoKey using PBKDF2 from conversation participant IDs.
  * Sorting ensures both sender and receiver independently derive the exact same symmetric key.
  */
 async function getConversationKey(userIdA: string, userIdB: string): Promise<CryptoKey> {
+  const participants = [userIdA, userIdB].sort().join(':');
+  const cachedKey = conversationKeyCache.get(participants);
+  if (cachedKey) {
+    return cachedKey;
+  }
+
   const subtle =
     typeof window !== 'undefined'
       ? window.crypto?.subtle
@@ -21,7 +32,6 @@ async function getConversationKey(userIdA: string, userIdB: string): Promise<Cry
     throw new Error('Web Crypto API subtle is not available in this environment.');
   }
 
-  const participants = [userIdA, userIdB].sort().join(':');
   const keyMaterial = await subtle.importKey(
     'raw',
     new TextEncoder().encode(participants),
@@ -30,7 +40,7 @@ async function getConversationKey(userIdA: string, userIdB: string): Promise<Cry
     ['deriveKey']
   );
 
-  return subtle.deriveKey(
+  const derivedKey = await subtle.deriveKey(
     {
       name: 'PBKDF2',
       salt: E2EE_SALT,
@@ -42,6 +52,9 @@ async function getConversationKey(userIdA: string, userIdB: string): Promise<Cry
     false,
     ['encrypt', 'decrypt']
   );
+
+  conversationKeyCache.set(participants, derivedKey);
+  return derivedKey;
 }
 
 function bufferToBase64(buffer: ArrayBuffer | Uint8Array): string {
@@ -124,6 +137,12 @@ export async function decryptMessage(
     return ciphertextOrPlain;
   }
 
+  const cacheKey = `${senderId}:${receiverId}:${ciphertextOrPlain}`;
+  const cachedPlain = decryptedMessageCache.get(cacheKey);
+  if (cachedPlain !== undefined) {
+    return cachedPlain;
+  }
+
   try {
     const subtle =
       typeof window !== 'undefined'
@@ -152,7 +171,12 @@ export async function decryptMessage(
       ciphertext as unknown as BufferSource
     );
 
-    return new TextDecoder().decode(decrypted);
+    const plain = new TextDecoder().decode(decrypted);
+    decryptedMessageCache.set(cacheKey, plain);
+    if (decryptedMessageCache.size > 2000) {
+      decryptedMessageCache.clear();
+    }
+    return plain;
   } catch {
     // If decryption fails (e.g. wrong key, corrupted), render readable placeholder
     return '[Encrypted Message]';

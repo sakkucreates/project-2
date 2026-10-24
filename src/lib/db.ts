@@ -186,6 +186,9 @@ export async function ensureTursoTables(): Promise<void> {
           key TEXT PRIMARY KEY,
           value TEXT
         );`,
+        `CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(senderId, receiverId);`,
+        `CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(createdAt);`,
+        `CREATE INDEX IF NOT EXISTS idx_messages_idempotency ON messages(idempotencyKey);`,
       ],
       'write'
     );
@@ -320,6 +323,30 @@ async function getTursoMessages(): Promise<Message[] | null> {
   }
 }
 
+async function getTursoConversationMessages(
+  user1Id: string,
+  user2Id: string,
+  viewerId?: string
+): Promise<Message[]> {
+  const client = getTursoClient();
+  if (!client) return [];
+  await ensureTursoTables();
+  try {
+    const res = await client.execute({
+      sql: `SELECT * FROM messages 
+            WHERE (senderId = ? AND receiverId = ?) OR (senderId = ? AND receiverId = ?)
+            ORDER BY createdAt ASC`,
+      args: [user1Id, user2Id, user2Id, user1Id],
+    });
+    return res.rows
+      .map(rowToMessage)
+      .filter((m) => !viewerId || !m.deletedFor || !m.deletedFor.includes(viewerId));
+  } catch (err) {
+    console.error('[Turso Error] getTursoConversationMessages failed:', err);
+    throw new StorageOperationError(`Turso get conversation messages failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 async function pushTursoMessage(m: Message): Promise<boolean> {
   const client = getTursoClient();
   if (!client) return false;
@@ -356,28 +383,26 @@ async function saveTursoMessages(messages: Message[]): Promise<boolean> {
   if (!client) return false;
   await ensureTursoTables();
   try {
-    const statements = [
-      { sql: 'DELETE FROM messages', args: [] },
-      ...messages.map((m) => ({
-        sql: `INSERT OR REPLACE INTO messages (id, senderId, receiverId, text, image, video, audio, createdAt, read, reactions, idempotencyKey, replyTo, deletedFor)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        args: [
-          m.id,
-          m.senderId,
-          m.receiverId,
-          m.text || '',
-          m.image || null,
-          m.video || null,
-          m.audio || null,
-          m.createdAt,
-          m.read ? 1 : 0,
-          m.reactions ? JSON.stringify(m.reactions) : null,
-          m.idempotencyKey || null,
-          m.replyTo ? JSON.stringify(m.replyTo) : null,
-          m.deletedFor ? JSON.stringify(m.deletedFor) : null,
-        ],
-      })),
-    ];
+    if (messages.length === 0) return true;
+    const statements = messages.map((m) => ({
+      sql: `INSERT OR REPLACE INTO messages (id, senderId, receiverId, text, image, video, audio, createdAt, read, reactions, idempotencyKey, replyTo, deletedFor)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        m.id,
+        m.senderId,
+        m.receiverId,
+        m.text || '',
+        m.image || null,
+        m.video || null,
+        m.audio || null,
+        m.createdAt,
+        m.read ? 1 : 0,
+        m.reactions ? JSON.stringify(m.reactions) : null,
+        m.idempotencyKey || null,
+        m.replyTo ? JSON.stringify(m.replyTo) : null,
+        m.deletedFor ? JSON.stringify(m.deletedFor) : null,
+      ],
+    }));
     await client.batch(statements, 'write');
     return true;
   } catch (err) {
@@ -995,6 +1020,23 @@ export async function deleteUser(id: string): Promise<boolean> {
     return false;
   }
 
+  if (isTursoConfigured()) {
+    const client = getTursoClient();
+    if (client) {
+      await ensureTursoTables();
+      await client.batch(
+        [
+          { sql: 'DELETE FROM users WHERE id = ?', args: [id] },
+          { sql: 'DELETE FROM messages WHERE senderId = ? OR receiverId = ?', args: [id, id] },
+        ],
+        'write'
+      );
+      cachedDbState = null;
+      cachedKvMessages = null;
+      return true;
+    }
+  }
+
   const db = await getDb();
   const initialLength = db.users.length;
   db.users = db.users.filter((u) => u.id !== id);
@@ -1017,6 +1059,10 @@ export async function getConversationMessages(
   user2Id: string,
   viewerId?: string
 ): Promise<Message[]> {
+  if (isTursoConfigured()) {
+    return getTursoConversationMessages(user1Id, user2Id, viewerId);
+  }
+
   const allMessages =
     isPersistenceConfigured() ? (await getKvMessages()) || [] : (await getDb()).messages;
 
@@ -1059,17 +1105,39 @@ export async function createMessage(
 
   // 1. Check for existing message by Idempotency Key (scoped to conversation)
   if (idempotencyKey) {
-    const existingMessages =
-      isPersistenceConfigured() ? (await getKvMessages()) || [] : (await getDb()).messages;
+    if (isTursoConfigured()) {
+      const client = getTursoClient();
+      if (client) {
+        await ensureTursoTables();
+        const check = await client.execute({
+          sql: 'SELECT * FROM messages WHERE idempotencyKey = ? AND senderId = ? AND receiverId = ? LIMIT 1',
+          args: [idempotencyKey, msgData.senderId, msgData.receiverId],
+        });
+        if (check.rows.length > 0) {
+          return rowToMessage(check.rows[0]);
+        }
+      }
+    } else if (cachedKvMessages && cachedKvMessages.data.length > 0) {
+      const match = cachedKvMessages.data.find(
+        (m) =>
+          m.idempotencyKey === idempotencyKey &&
+          m.senderId === msgData.senderId &&
+          m.receiverId === msgData.receiverId
+      );
+      if (match) return match;
+    } else {
+      const existingMessages =
+        isPersistenceConfigured() ? (await getKvMessages()) || [] : (await getDb()).messages;
 
-    const existingMatch = existingMessages.find(
-      (m) =>
-        m.idempotencyKey === idempotencyKey &&
-        m.senderId === msgData.senderId &&
-        m.receiverId === msgData.receiverId
-    );
-    if (existingMatch) {
-      return existingMatch;
+      const existingMatch = existingMessages.find(
+        (m) =>
+          m.idempotencyKey === idempotencyKey &&
+          m.senderId === msgData.senderId &&
+          m.receiverId === msgData.receiverId
+      );
+      if (existingMatch) {
+        return existingMatch;
+      }
     }
   }
 
@@ -1130,6 +1198,25 @@ export async function createMessage(
 export async function markMessagesAsRead(senderId: string, receiverId: string): Promise<void> {
   assertPersistenceAvailable('markMessagesAsRead');
 
+  if (isTursoConfigured()) {
+    const client = getTursoClient();
+    if (client) {
+      await ensureTursoTables();
+      await client.execute({
+        sql: 'UPDATE messages SET read = 1 WHERE senderId = ? AND receiverId = ? AND read = 0',
+        args: [senderId, receiverId],
+      });
+      if (cachedKvMessages) {
+        cachedKvMessages.data.forEach((m) => {
+          if (m.senderId === senderId && m.receiverId === receiverId) {
+            m.read = true;
+          }
+        });
+      }
+      return;
+    }
+  }
+
   const db = await getDb();
   let updated = false;
   db.messages.forEach((m) => {
@@ -1153,6 +1240,27 @@ export async function clearConversationMessages(
   user2Id: string
 ): Promise<boolean> {
   assertPersistenceAvailable('clearConversationMessages');
+
+  if (isTursoConfigured()) {
+    const client = getTursoClient();
+    if (client) {
+      await ensureTursoTables();
+      await client.execute({
+        sql: 'DELETE FROM messages WHERE (senderId = ? AND receiverId = ?) OR (senderId = ? AND receiverId = ?)',
+        args: [user1Id, user2Id, user2Id, user1Id],
+      });
+      if (cachedKvMessages) {
+        cachedKvMessages.data = cachedKvMessages.data.filter(
+          (m) =>
+            !(
+              (m.senderId === user1Id && m.receiverId === user2Id) ||
+              (m.senderId === user2Id && m.receiverId === user1Id)
+            )
+        );
+      }
+      return true;
+    }
+  }
 
   const db = await getDb();
   db.messages = db.messages.filter(
@@ -1185,6 +1293,21 @@ export async function clearConversationMessages(
 export async function deleteMessage(messageId: string): Promise<boolean> {
   assertPersistenceAvailable('deleteMessage');
 
+  if (isTursoConfigured()) {
+    const client = getTursoClient();
+    if (client) {
+      await ensureTursoTables();
+      const res = await client.execute({
+        sql: 'DELETE FROM messages WHERE id = ?',
+        args: [messageId],
+      });
+      if (cachedKvMessages) {
+        cachedKvMessages.data = cachedKvMessages.data.filter((m) => m.id !== messageId);
+      }
+      return res.rowsAffected > 0;
+    }
+  }
+
   const db = await getDb();
   const initialLength = db.messages.length;
   db.messages = db.messages.filter((m) => m.id !== messageId);
@@ -1204,6 +1327,39 @@ export async function deleteMessage(messageId: string): Promise<boolean> {
 
 export async function deleteMessageForUser(messageId: string, userId: string): Promise<boolean> {
   assertPersistenceAvailable('deleteMessageForUser');
+
+  if (isTursoConfigured()) {
+    const client = getTursoClient();
+    if (client) {
+      await ensureTursoTables();
+      const check = await client.execute({
+        sql: 'SELECT deletedFor FROM messages WHERE id = ?',
+        args: [messageId],
+      });
+      if (check.rows.length === 0) return false;
+      let deletedFor: string[] = [];
+      const raw = check.rows[0].deletedFor;
+      if (raw) {
+        try {
+          deletedFor = typeof raw === 'string' ? JSON.parse(raw) : (raw as unknown as string[]);
+        } catch {}
+      }
+      if (!deletedFor.includes(userId)) {
+        deletedFor.push(userId);
+      }
+      await client.execute({
+        sql: 'UPDATE messages SET deletedFor = ? WHERE id = ?',
+        args: [JSON.stringify(deletedFor), messageId],
+      });
+      if (cachedKvMessages) {
+        const target = cachedKvMessages.data.find((m) => m.id === messageId);
+        if (target) {
+          target.deletedFor = deletedFor;
+        }
+      }
+      return true;
+    }
+  }
 
   const db = await getDb();
   const msg = db.messages.find((m) => m.id === messageId);

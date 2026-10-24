@@ -318,26 +318,50 @@ export default function HomePage() {
         );
 
         setMessages((prev) => {
-          // Keep optimistic messages that haven't landed in canonical database yet
-          const pendingOptimistic = prev.filter(
-            (p) => p.isOptimistic && !decryptedList.some((m: Message) => m.id === p.id)
-          );
+          const now = Date.now();
+          // Keep unsynced optimistic messages and very recent confirmed messages not yet present in server list
+          const pendingUnsynced = prev.filter((p) => {
+            const alreadyInServer = decryptedList.some(
+              (m: Message) => m.id === p.id || (Boolean(p.idempotencyKey) && m.idempotencyKey === p.idempotencyKey)
+            );
+            if (alreadyInServer) return false;
+            if (p.isOptimistic) return true;
+            // Retain recent messages created by current user within the last 15s to bridge any replication gap
+            const createdAtTime = new Date(p.createdAt).getTime();
+            if (now - createdAtTime < 15000 && p.senderId === currentUser.id) {
+              return true;
+            }
+            return false;
+          });
 
-          // Canonical messages from server
-          const canonical = decryptedList.map((m: Message) => ({
-            ...m,
-            isOptimistic: false,
-          }));
+          // Canonical messages from server with plaintext preservation
+          const canonical = decryptedList.map((m: Message) => {
+            const existing = prev.find(
+              (p) => p.id === m.id || (Boolean(p.idempotencyKey) && Boolean(m.idempotencyKey) && p.idempotencyKey === m.idempotencyKey)
+            );
+            const preservedText =
+              existing && existing.text && !existing.text.startsWith('ENC:')
+                ? existing.text
+                : m.text;
+            return {
+              ...m,
+              text: preservedText,
+              isOptimistic: false,
+              failed: false,
+            };
+          });
 
           // Avoid unnecessary rerenders if message ids, read states, and content are identical
-          const combined = [...canonical, ...pendingOptimistic];
+          const combined = [...canonical, ...pendingUnsynced];
           if (
             prev.length === combined.length &&
             prev.every(
               (msg, idx) =>
                 msg.id === combined[idx]?.id &&
                 msg.read === combined[idx]?.read &&
-                msg.text === combined[idx]?.text
+                msg.text === combined[idx]?.text &&
+                msg.isOptimistic === combined[idx]?.isOptimistic &&
+                msg.failed === combined[idx]?.failed
             )
           ) {
             return prev;
@@ -450,6 +474,7 @@ export default function HomePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          senderId: currentUser.id,
           receiverId: activeContact.id,
           text: textToSend || undefined,
           image: image || undefined,
