@@ -643,32 +643,18 @@ export default function ChatWindow({
               onClick={() => onReactToMessage?.(messageId || activeReactionMsgId || '', emoji)}
               title={`${count} ${emoji}`}
               aria-label={`${count} ${emoji} reaction`}
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-all border shadow-xs ${
-                isDark
-                  ? userHasReacted
-                    ? 'bg-[#1f2c34] border-[#00a884] text-[#00a884] font-semibold ring-1 ring-[#00a884]/30'
-                    : 'bg-[#202c33] border-[#2a3942] text-[#e9edef] hover:border-[#3b4a54] hover:bg-[#26353d]'
-                  : userHasReacted
-                  ? 'bg-[#EDE9FE] border-[#7C5CFC] text-[#4C3A8C] font-semibold ring-1 ring-[#7C5CFC]/20'
-                  : 'bg-white border-[#E8E3FA] text-[#1E1B2E] hover:border-[#D5CCF5] hover:bg-[#F9F7FD]'
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors border shadow-xs ${
+                userHasReacted
+                  ? isDark
+                    ? 'bg-[#262d31] border-[#3b4a54] text-[#e9edef] font-semibold'
+                    : 'bg-[#EDE9FE] border-[#7C5CFC] text-[#4C3A8C] font-semibold'
+                  : isDark
+                    ? 'bg-[#1e2428] border-[#2a3136] text-[#8696a0] hover:border-[#3b4a54] hover:text-[#d1d7db]'
+                    : 'bg-white border-[#E8E3FA] text-[#1E1B2E] hover:border-[#D5CCF5]'
               }`}
             >
-              <span className="text-sm leading-none">{emoji}</span>
-              {count > 1 && (
-                <span
-                  className={`text-[10px] font-medium ${
-                    isDark
-                      ? userHasReacted
-                        ? 'text-[#00a884]'
-                        : 'text-[#8696a0]'
-                      : userHasReacted
-                      ? 'text-[#4C3A8C]'
-                      : 'text-[#667781]'
-                  }`}
-                >
-                  {count}
-                </span>
-              )}
+              <span>{emoji}</span>
+              {count > 1 && <span className="text-[10px]">{count}</span>}
             </button>
           );
         })}
