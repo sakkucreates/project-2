@@ -31,7 +31,7 @@ let memoryStore: DatabaseSchema | null = null;
 let cachedDbState: { data: DatabaseSchema; timestamp: number } | null = null;
 let cachedKvMessages: { data: Message[]; timestamp: number } | null = null;
 let cachedKvReactions: { data: Record<string, Reaction[]>; timestamp: number } | null = null;
-const CACHE_TTL_MS = 1500;
+const CACHE_TTL_MS = 2500;
 
 /**
  * Explicitly invalidates the high-frequency in-memory read cache.
@@ -84,6 +84,7 @@ export function cleanKvCredentials(rawUrl?: string, rawToken?: string): { url: s
 // -------------------------------------------------------------
 let tursoClient: Client | null = null;
 let tursoTablesInitialized = false;
+let tursoInitPromise: Promise<void> | null = null;
 
 /**
  * Resolves Turso Database configuration credentials.
@@ -150,73 +151,88 @@ export function getTursoClient(): Client | null {
  */
 export async function ensureTursoTables(): Promise<void> {
   if (tursoTablesInitialized) return;
+  if (tursoInitPromise) return tursoInitPromise;
+
   const client = getTursoClient();
   if (!client) return;
 
-  try {
-    await client.batch(
-      [
-        `CREATE TABLE IF NOT EXISTS users (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          code TEXT NOT NULL UNIQUE,
-          role TEXT NOT NULL,
-          avatar TEXT NOT NULL,
-          status TEXT NOT NULL,
-          lastSeen TEXT NOT NULL,
-          createdAt TEXT NOT NULL,
-          notes TEXT
-        );`,
-        `CREATE TABLE IF NOT EXISTS messages (
-          id TEXT PRIMARY KEY,
-          senderId TEXT NOT NULL,
-          receiverId TEXT NOT NULL,
-          text TEXT,
-          image TEXT,
-          video TEXT,
-          audio TEXT,
-          createdAt TEXT NOT NULL,
-          read INTEGER NOT NULL DEFAULT 0,
-          reactions TEXT,
-          idempotencyKey TEXT,
-          replyTo TEXT,
-          deletedFor TEXT
-        );`,
-        `CREATE TABLE IF NOT EXISTS meta (
-          key TEXT PRIMARY KEY,
-          value TEXT
-        );`,
-        `CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(senderId, receiverId);`,
-        `CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(createdAt);`,
-        `CREATE INDEX IF NOT EXISTS idx_messages_idempotency ON messages(idempotencyKey);`,
-      ],
-      'write'
-    );
+  tursoInitPromise = (async () => {
+    try {
+      // Fast check: if tables already exist, skip the 800ms DDL schema write lock
+      const check = await client.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='users' LIMIT 1");
+      if (check.rows.length > 0) {
+        tursoTablesInitialized = true;
+        return;
+      }
 
-    // Auto-seed admin user if users table is empty
-    const userCount = await client.execute("SELECT COUNT(*) as count FROM users WHERE id = 'admin_root'");
-    if (Number(userCount.rows[0]?.count || 0) === 0) {
-      await client.execute({
-        sql: `INSERT OR IGNORE INTO users (id, name, code, role, avatar, status, lastSeen, createdAt, notes)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        args: [
-          INITIAL_DATA.users[0].id,
-          INITIAL_DATA.users[0].name,
-          INITIAL_DATA.users[0].code,
-          INITIAL_DATA.users[0].role,
-          INITIAL_DATA.users[0].avatar,
-          INITIAL_DATA.users[0].status,
-          INITIAL_DATA.users[0].lastSeen,
-          INITIAL_DATA.users[0].createdAt,
-          INITIAL_DATA.users[0].notes || null,
+      await client.batch(
+        [
+          `CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            code TEXT NOT NULL UNIQUE,
+            role TEXT NOT NULL,
+            avatar TEXT NOT NULL,
+            status TEXT NOT NULL,
+            lastSeen TEXT NOT NULL,
+            createdAt TEXT NOT NULL,
+            notes TEXT
+          );`,
+          `CREATE TABLE IF NOT EXISTS messages (
+            id TEXT PRIMARY KEY,
+            senderId TEXT NOT NULL,
+            receiverId TEXT NOT NULL,
+            text TEXT,
+            image TEXT,
+            video TEXT,
+            audio TEXT,
+            createdAt TEXT NOT NULL,
+            read INTEGER NOT NULL DEFAULT 0,
+            reactions TEXT,
+            idempotencyKey TEXT,
+            replyTo TEXT,
+            deletedFor TEXT
+          );`,
+          `CREATE TABLE IF NOT EXISTS meta (
+            key TEXT PRIMARY KEY,
+            value TEXT
+          );`,
+          `CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(senderId, receiverId);`,
+          `CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(createdAt);`,
+          `CREATE INDEX IF NOT EXISTS idx_messages_idempotency ON messages(idempotencyKey);`,
         ],
-      });
-    }
+        'write'
+      );
 
-    tursoTablesInitialized = true;
-  } catch (err) {
-    console.warn('[Turso Init Warning] Could not ensure tables:', err);
-  }
+      // Auto-seed admin user if users table is empty
+      const userCount = await client.execute("SELECT COUNT(*) as count FROM users WHERE id = 'admin_root'");
+      if (Number(userCount.rows[0]?.count || 0) === 0) {
+        await client.execute({
+          sql: `INSERT OR IGNORE INTO users (id, name, code, role, avatar, status, lastSeen, createdAt, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            INITIAL_DATA.users[0].id,
+            INITIAL_DATA.users[0].name,
+            INITIAL_DATA.users[0].code,
+            INITIAL_DATA.users[0].role,
+            INITIAL_DATA.users[0].avatar,
+            INITIAL_DATA.users[0].status,
+            INITIAL_DATA.users[0].lastSeen,
+            INITIAL_DATA.users[0].createdAt,
+            INITIAL_DATA.users[0].notes || null,
+          ],
+        });
+      }
+
+      tursoTablesInitialized = true;
+    } catch (err) {
+      console.warn('[Turso Init Warning] Could not ensure tables:', err);
+    } finally {
+      tursoInitPromise = null;
+    }
+  })();
+
+  return tursoInitPromise;
 }
 
 function rowToUser(row: Record<string, unknown>): User {
@@ -788,8 +804,7 @@ export async function getDb(): Promise<DatabaseSchema> {
 
   if (isPersistenceConfigured()) {
     try {
-      const rawUsers = await getKvUsers();
-      const rawMessages = await getKvMessages();
+      const [rawUsers, rawMessages] = await Promise.all([getKvUsers(), getKvMessages()]);
       const users = Array.isArray(rawUsers) && rawUsers.length > 0 ? rawUsers : INITIAL_DATA.users;
       const messages = Array.isArray(rawMessages) ? rawMessages : [];
       if (!Array.isArray(rawUsers) || rawUsers.length === 0) {
@@ -928,9 +943,27 @@ export async function resetDatabase(): Promise<DatabaseSchema> {
 // User Helpers
 
 export async function findUserByCode(code: string): Promise<User | null> {
+  const trimmed = code.trim();
+
+  if (isTursoConfigured()) {
+    const client = getTursoClient();
+    if (client) {
+      await ensureTursoTables();
+      if (trimmed === '@2021' || trimmed === '2021' || trimmed === INITIAL_DATA.adminCode) {
+        const adminRes = await client.execute("SELECT * FROM users WHERE role = 'admin' LIMIT 1");
+        if (adminRes.rows.length > 0) return rowToUser(adminRes.rows[0]);
+      }
+      const res = await client.execute({
+        sql: 'SELECT * FROM users WHERE UPPER(code) = UPPER(?) LIMIT 1',
+        args: [trimmed],
+      });
+      if (res.rows.length > 0) return rowToUser(res.rows[0]);
+      return null;
+    }
+  }
+
   const db = await getDb();
   if (!db || !Array.isArray(db.users)) return INITIAL_DATA.users[0];
-  const trimmed = code.trim();
 
   // Admin access code matches
   if (trimmed === '@2021' || trimmed === '2021' || trimmed === db.adminCode) {
@@ -1025,14 +1058,22 @@ export async function updateUser(id: string, updates: Partial<User>): Promise<Us
           args,
         });
       }
-      cachedDbState = null;
+      if (cachedDbState && Array.isArray(cachedDbState.data.users)) {
+        const u = cachedDbState.data.users.find((user) => user.id === id);
+        if (u) {
+          Object.assign(u, updates);
+        }
+      } else {
+        cachedDbState = null;
+      }
       if (memoryStore && Array.isArray(memoryStore.users)) {
         const idx = memoryStore.users.findIndex((u) => u.id === id);
         if (idx !== -1) {
           memoryStore.users[idx] = { ...memoryStore.users[idx], ...updates };
         }
       }
-      return getUserById(id);
+      const existing = (cachedDbState?.data.users || memoryStore?.users || []).find((u) => u.id === id);
+      return existing || getUserById(id);
     }
   }
 

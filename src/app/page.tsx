@@ -213,7 +213,23 @@ export default function HomePage() {
           })
         );
 
-        setUsers(decryptedUsers);
+        setUsers((prev) => {
+          if (
+            prev.length === decryptedUsers.length &&
+            prev.every(
+              (u, idx) =>
+                u.id === decryptedUsers[idx]?.id &&
+                u.status === decryptedUsers[idx]?.status &&
+                u.unreadCount === decryptedUsers[idx]?.unreadCount &&
+                u.typingTo === decryptedUsers[idx]?.typingTo &&
+                u.lastMessage?.id === decryptedUsers[idx]?.lastMessage?.id &&
+                u.lastMessage?.text === decryptedUsers[idx]?.lastMessage?.text
+            )
+          ) {
+            return prev;
+          }
+          return decryptedUsers;
+        });
         setContactsError(null);
 
         // Only update active contact status if one has already been explicitly selected by the user
