@@ -1485,7 +1485,23 @@ export async function addReactionToMessage(
 
   let reactions: Reaction[] = [];
 
-  if (isPersistenceConfigured()) {
+  if (isTursoConfigured()) {
+    const client = getTursoClient();
+    if (client) {
+      await ensureTursoTables();
+      const res = await client.execute({
+        sql: 'SELECT reactions FROM messages WHERE id = ? LIMIT 1',
+        args: [messageId],
+      });
+      if (res.rows.length === 0) return null;
+      if (res.rows[0].reactions) {
+        try {
+          const raw = res.rows[0].reactions;
+          reactions = typeof raw === 'string' ? JSON.parse(raw) : (raw as unknown as Reaction[]);
+        } catch {}
+      }
+    }
+  } else if (isPersistenceConfigured()) {
     const kvReactions: Record<string, Reaction[]> = await getKvReactions().catch(
       () => ({} as Record<string, Reaction[]>)
     );

@@ -341,18 +341,41 @@ export default function HomePage() {
         );
 
         setMessages((prev) => {
-          // 1. Index previous messages in Map for O(1) deduplication
+          // If server returned empty list (e.g. chat cleared), keep only unsynced optimistic messages
+          if (decryptedList.length === 0) {
+            return prev.filter((m) => m.isOptimistic || m.failed);
+          }
+
+          // 1. Identify server messages and boundary
+          const serverIdSet = new Set(decryptedList.map((m) => m.id));
+          const oldestServerTime = new Date(decryptedList[0].createdAt).getTime();
+
+          // 2. Index previous messages in Map for O(1) deduplication
           const messageMap = new Map<string, ChatMessageItem>();
           const tempIdMap = new Map<string, string>(); // idempotencyKey -> tempId
 
           for (const msg of prev) {
-            messageMap.set(msg.id, msg);
-            if (msg.idempotencyKey) {
-              tempIdMap.set(msg.idempotencyKey, msg.id);
+            // Keep unsynced optimistic or failed messages
+            if (msg.isOptimistic || msg.failed) {
+              messageMap.set(msg.id, msg);
+              if (msg.idempotencyKey) {
+                tempIdMap.set(msg.idempotencyKey, msg.id);
+              }
+              continue;
             }
+
+            // If message falls within server sync window (>= oldestServerTime) but is missing,
+            // it was deleted on the server (for everyone or for this user) -> prune it
+            const msgTime = new Date(msg.createdAt).getTime();
+            if (msgTime >= oldestServerTime && !serverIdSet.has(msg.id)) {
+              continue;
+            }
+
+            // Historical message beyond sync window -> retain
+            messageMap.set(msg.id, msg);
           }
 
-          // 2. Merge server messages (preserving plaintext if already known)
+          // 3. Merge server messages (preserving plaintext if already known)
           for (const m of decryptedList) {
             const tempId = m.idempotencyKey ? tempIdMap.get(m.idempotencyKey) : undefined;
             const existing = (tempId ? messageMap.get(tempId) : undefined) || messageMap.get(m.id);
@@ -375,12 +398,12 @@ export default function HomePage() {
             });
           }
 
-          // 3. Reconstruct deduplicated array sorted by createdAt
+          // 4. Reconstruct deduplicated array sorted by createdAt
           const merged = Array.from(new Set(messageMap.values())).sort(
             (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
           );
 
-          // 4. Avoid unnecessary re-renders if identical
+          // 5. Avoid unnecessary re-renders if identical
           if (
             prev.length === merged.length &&
             prev.every(
