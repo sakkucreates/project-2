@@ -464,6 +464,8 @@ export default function ChatWindow({
     if (isInitialScrollRef.current) {
       isInitialScrollRef.current = false;
       scrollToBottom('auto');
+      // Secondary check after layout settles to guarantee latest messages are visible
+      setTimeout(() => scrollToBottom('auto'), 50);
     } else {
       scrollToBottom('smooth');
     }

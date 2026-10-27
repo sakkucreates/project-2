@@ -331,7 +331,9 @@ async function getTursoMessages(): Promise<Message[] | null> {
   if (!client) return null;
   await ensureTursoTables();
   try {
-    const res = await client.execute('SELECT * FROM messages ORDER BY createdAt ASC');
+    const res = await client.execute(
+      'SELECT * FROM (SELECT * FROM messages ORDER BY createdAt DESC LIMIT 200) ORDER BY createdAt ASC'
+    );
     return res.rows.map(rowToMessage);
   } catch (err) {
     console.error('[Turso Error] getTursoMessages failed:', err);

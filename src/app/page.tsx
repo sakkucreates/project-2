@@ -271,6 +271,9 @@ export default function HomePage() {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         fetchUsers();
+        if (activeContactRef.current?.id) {
+          fetchMessages(activeContactRef.current.id);
+        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -528,8 +531,9 @@ export default function HomePage() {
         )
       );
 
-      // Refresh contact list preview
+      // Refresh contact list preview and sync messages
       fetchUsers();
+      fetchMessages(activeContact.id);
       return true;
     } catch {
       // Mark optimistic message as failed with preserved idempotencyKey
@@ -675,9 +679,12 @@ export default function HomePage() {
       setMobileView('conversation');
       return;
     }
+    activeContactRef.current = contact;
     setActiveContact(contact);
     setMobileView('conversation');
     setMessages([]); // Clear previous conversation history only when switching to a different user
+    isPollingMessagesRef.current = false;
+    fetchMessages(contact.id);
   };
 
   // 1. Initial Loading Screen

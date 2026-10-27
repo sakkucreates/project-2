@@ -7,8 +7,9 @@
 
 const E2EE_SALT = new TextEncoder().encode('lumachat-e2ee-v1-salt-key-derivation');
 
-// In-memory key cache to avoid re-running expensive PBKDF2 (100,000 iterations) on every message
-const conversationKeyCache = new Map<string, CryptoKey>();
+// In-memory key promise cache to avoid re-running expensive PBKDF2 (100,000 iterations) on every message
+// Caching the Promise guarantees that concurrent message decryptions reuse the exact same in-flight derivation
+const conversationKeyPromiseCache = new Map<string, Promise<CryptoKey>>();
 // In-memory plaintext cache for decrypted messages to eliminate polling lag
 const decryptedMessageCache = new Map<string, string>();
 
@@ -18,43 +19,45 @@ const decryptedMessageCache = new Map<string, string>();
  */
 async function getConversationKey(userIdA: string, userIdB: string): Promise<CryptoKey> {
   const participants = [userIdA, userIdB].sort().join(':');
-  const cachedKey = conversationKeyCache.get(participants);
-  if (cachedKey) {
-    return cachedKey;
+  const existingPromise = conversationKeyPromiseCache.get(participants);
+  if (existingPromise) {
+    return existingPromise;
   }
 
-  const subtle =
-    typeof window !== 'undefined'
-      ? window.crypto?.subtle
-      : globalThis.crypto?.subtle;
+  const derivationPromise = (async () => {
+    const subtle =
+      typeof window !== 'undefined'
+        ? window.crypto?.subtle
+        : globalThis.crypto?.subtle;
 
-  if (!subtle) {
-    throw new Error('Web Crypto API subtle is not available in this environment.');
-  }
+    if (!subtle) {
+      throw new Error('Web Crypto API subtle is not available in this environment.');
+    }
 
-  const keyMaterial = await subtle.importKey(
-    'raw',
-    new TextEncoder().encode(participants),
-    { name: 'PBKDF2' },
-    false,
-    ['deriveKey']
-  );
+    const keyMaterial = await subtle.importKey(
+      'raw',
+      new TextEncoder().encode(participants),
+      { name: 'PBKDF2' },
+      false,
+      ['deriveKey']
+    );
 
-  const derivedKey = await subtle.deriveKey(
-    {
-      name: 'PBKDF2',
-      salt: E2EE_SALT,
-      iterations: 100000,
-      hash: 'SHA-256',
-    },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
+    return subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: E2EE_SALT,
+        iterations: 100000,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  })();
 
-  conversationKeyCache.set(participants, derivedKey);
-  return derivedKey;
+  conversationKeyPromiseCache.set(participants, derivationPromise);
+  return derivationPromise;
 }
 
 function bufferToBase64(buffer: ArrayBuffer | Uint8Array): string {

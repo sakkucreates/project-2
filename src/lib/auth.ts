@@ -193,24 +193,38 @@ export function validateCsrfProtection(request: Request): void {
 
   // 1. Check Sec-Fetch-Site if provided by modern browsers
   const secFetchSite = request.headers.get('sec-fetch-site');
+  if (secFetchSite === 'same-origin' || secFetchSite === 'same-site') {
+    return;
+  }
   if (secFetchSite && secFetchSite === 'cross-site') {
     throw new ForbiddenError('Cross-Site Request Forgery (CSRF) blocked: cross-site origin detected.');
   }
 
   // 2. Check Origin / Referer against request host
   const origin = request.headers.get('origin');
+  const referer = request.headers.get('referer');
   const host = request.headers.get('host');
 
   if (origin && host) {
     try {
       const originHost = new URL(origin).host;
-      if (originHost !== host) {
-        throw new ForbiddenError('Cross-Site Request Forgery (CSRF) blocked: Origin mismatch.');
+      if (originHost === host) {
+        return;
       }
-      return;
-    } catch {
+      throw new ForbiddenError('Cross-Site Request Forgery (CSRF) blocked: Origin mismatch.');
+    } catch (err) {
+      if (err instanceof ForbiddenError) throw err;
       throw new ForbiddenError('Invalid Origin header.');
     }
+  }
+
+  if (referer && host) {
+    try {
+      const refererHost = new URL(referer).host;
+      if (refererHost === host) {
+        return;
+      }
+    } catch {}
   }
 
   // 3. Fallback: Double-submit CSRF token validation
@@ -218,10 +232,17 @@ export function validateCsrfProtection(request: Request): void {
   const csrfCookie = cookies[CSRF_COOKIE_NAME];
   const csrfHeader = request.headers.get('x-csrf-token');
 
-  if (csrfCookie) {
-    if (!csrfHeader || csrfHeader !== csrfCookie) {
-      throw new ForbiddenError('CSRF token validation failed.');
-    }
+  if (csrfCookie && csrfHeader && csrfHeader === csrfCookie) {
+    return;
+  }
+
+  // If request has no cross-site markers and no explicit mismatch, allow same-origin navigation/fetches
+  if (!origin && !secFetchSite) {
+    return;
+  }
+
+  if (csrfCookie && (!csrfHeader || csrfHeader !== csrfCookie)) {
+    throw new ForbiddenError('CSRF token validation failed.');
   }
 }
 
