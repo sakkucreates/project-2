@@ -349,9 +349,12 @@ async function getTursoConversationMessages(
   await ensureTursoTables();
   try {
     const res = await client.execute({
-      sql: `SELECT * FROM messages 
-            WHERE (senderId = ? AND receiverId = ?) OR (senderId = ? AND receiverId = ?)
-            ORDER BY createdAt ASC`,
+      sql: `SELECT * FROM (
+              SELECT * FROM messages 
+              WHERE (senderId = ? AND receiverId = ?) OR (senderId = ? AND receiverId = ?)
+              ORDER BY createdAt DESC
+              LIMIT 150
+            ) ORDER BY createdAt ASC`,
       args: [user1Id, user2Id, user2Id, user1Id],
     });
     return res.rows

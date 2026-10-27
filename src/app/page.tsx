@@ -338,56 +338,62 @@ export default function HomePage() {
         );
 
         setMessages((prev) => {
-          const now = Date.now();
-          // Keep unsynced optimistic messages and very recent confirmed messages not yet present in server list
-          const pendingUnsynced = prev.filter((p) => {
-            const alreadyInServer = decryptedList.some(
-              (m: Message) => m.id === p.id || (Boolean(p.idempotencyKey) && m.idempotencyKey === p.idempotencyKey)
-            );
-            if (alreadyInServer) return false;
-            if (p.isOptimistic) return true;
-            // Retain recent messages created by current user within the last 15s to bridge any replication gap
-            const createdAtTime = new Date(p.createdAt).getTime();
-            if (now - createdAtTime < 15000 && p.senderId === currentUser.id) {
-              return true;
-            }
-            return false;
-          });
+          // 1. Index previous messages in Map for O(1) deduplication
+          const messageMap = new Map<string, ChatMessageItem>();
+          const tempIdMap = new Map<string, string>(); // idempotencyKey -> tempId
 
-          // Canonical messages from server with plaintext preservation
-          const canonical = decryptedList.map((m: Message) => {
-            const existing = prev.find(
-              (p) => p.id === m.id || (Boolean(p.idempotencyKey) && Boolean(m.idempotencyKey) && p.idempotencyKey === m.idempotencyKey)
-            );
+          for (const msg of prev) {
+            messageMap.set(msg.id, msg);
+            if (msg.idempotencyKey) {
+              tempIdMap.set(msg.idempotencyKey, msg.id);
+            }
+          }
+
+          // 2. Merge server messages (preserving plaintext if already known)
+          for (const m of decryptedList) {
+            const tempId = m.idempotencyKey ? tempIdMap.get(m.idempotencyKey) : undefined;
+            const existing = (tempId ? messageMap.get(tempId) : undefined) || messageMap.get(m.id);
+
+            // Clean up temporary optimistic ID if replaced by real server ID
+            if (existing && existing.id !== m.id) {
+              messageMap.delete(existing.id);
+            }
+
             const preservedText =
               existing && existing.text && !existing.text.startsWith('ENC:')
                 ? existing.text
                 : m.text;
-            return {
+
+            messageMap.set(m.id, {
               ...m,
               text: preservedText,
               isOptimistic: false,
               failed: false,
-            };
-          });
+            });
+          }
 
-          // Avoid unnecessary rerenders if message ids, read states, and content are identical
-          const combined = [...canonical, ...pendingUnsynced];
+          // 3. Reconstruct deduplicated array sorted by createdAt
+          const merged = Array.from(new Set(messageMap.values())).sort(
+            (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          );
+
+          // 4. Avoid unnecessary re-renders if identical
           if (
-            prev.length === combined.length &&
+            prev.length === merged.length &&
             prev.every(
               (msg, idx) =>
-                msg.id === combined[idx]?.id &&
-                msg.read === combined[idx]?.read &&
-                msg.text === combined[idx]?.text &&
-                msg.isOptimistic === combined[idx]?.isOptimistic &&
-                msg.failed === combined[idx]?.failed
+                msg.id === merged[idx]?.id &&
+                msg.read === merged[idx]?.read &&
+                msg.text === merged[idx]?.text &&
+                msg.isOptimistic === merged[idx]?.isOptimistic &&
+                msg.failed === merged[idx]?.failed &&
+                msg.reactions?.length === merged[idx]?.reactions?.length
             )
           ) {
             return prev;
           }
 
-          return combined;
+          return merged;
         });
 
         // Trigger read status update if any incoming unread messages exist
@@ -413,23 +419,23 @@ export default function HomePage() {
   }, [currentUser]);
 
   // Poll conversation messages every 1 second when active
+  const activeContactId = activeContact?.id;
   useEffect(() => {
-    if (appState !== 'authenticated' || !currentUser || !activeContact) {
+    if (appState !== 'authenticated' || !currentUser || !activeContactId) {
       return;
     }
 
-    const currentContactId = activeContact.id;
     const initialTimer = setTimeout(() => {
-      fetchMessages(currentContactId);
+      fetchMessages(activeContactId);
     }, 0);
 
     const interval = setInterval(() => {
       if (
         typeof document !== 'undefined' &&
         document.visibilityState === 'visible' &&
-        activeContactRef.current?.id === currentContactId
+        activeContactRef.current?.id === activeContactId
       ) {
-        fetchMessages(currentContactId);
+        fetchMessages(activeContactId);
       }
     }, APP_CONFIG.polling.messageIntervalMs);
 
@@ -437,7 +443,7 @@ export default function HomePage() {
       clearTimeout(initialTimer);
       clearInterval(interval);
     };
-  }, [appState, currentUser, activeContact, fetchMessages]);
+  }, [appState, currentUser, activeContactId, fetchMessages]);
 
   // -------------------------------------------------------------
   // Send Message with Optimistic UI, Image Support & Idempotency Key
@@ -665,9 +671,13 @@ export default function HomePage() {
 
   // Contact selection handler
   const handleSelectContact = (contact: User) => {
+    if (activeContactRef.current?.id === contact.id) {
+      setMobileView('conversation');
+      return;
+    }
     setActiveContact(contact);
     setMobileView('conversation');
-    setMessages([]); // Clear previous conversation history immediately to avoid flash of stale data
+    setMessages([]); // Clear previous conversation history only when switching to a different user
   };
 
   // 1. Initial Loading Screen

@@ -442,12 +442,31 @@ export default function ChatWindow({
     };
   }, [activeMenuMsgId]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const prevMsgCountRef = useRef(0);
+  const prevLastMsgIdRef = useRef<string | null>(null);
+  const isInitialScrollRef = useRef(true);
+
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    const lastMsg = messages[messages.length - 1];
+    const lastMsgId = lastMsg?.id || null;
+    const countChanged = messages.length !== prevMsgCountRef.current;
+    const lastMsgChanged = lastMsgId !== prevLastMsgIdRef.current;
+
+    prevMsgCountRef.current = messages.length;
+    prevLastMsgIdRef.current = lastMsgId;
+
+    if (!countChanged && !lastMsgChanged) return;
+
+    if (isInitialScrollRef.current) {
+      isInitialScrollRef.current = false;
+      scrollToBottom('auto');
+    } else {
+      scrollToBottom('smooth');
+    }
   }, [messages]);
 
   // Adjust textarea height dynamically & trigger live typing
