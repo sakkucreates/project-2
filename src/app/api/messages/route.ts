@@ -5,6 +5,7 @@ import {
   deleteMessage,
   deleteMessageForUser,
   getUserTypingTo,
+  markMessagesAsRead,
 } from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { validateMessageContent, validateIdempotencyKey, parseJsonBody } from '@/lib/validation';
@@ -96,6 +97,11 @@ export async function POST(request: Request) {
       audio: validatedAudio,
       replyTo,
       idempotencyKey: validatedIdempotencyKey,
+    });
+
+    // When sender sends a message, any prior unread messages received by sender from receiver are marked read
+    await markMessagesAsRead(receiverId, senderId).catch((err: unknown) => {
+      console.warn('[Messages] Auto mark-as-read on reply failed:', err);
     });
 
     return NextResponse.json({ success: true, message });

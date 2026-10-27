@@ -73,6 +73,9 @@ export async function GET(request: Request) {
         // Unread messages sent FROM this contact TO activeUserId
         if (activeContactId && user.id === activeContactId) {
           unreadCount = 0;
+        } else if (lastMessage && lastMessage.senderId === activeUserId) {
+          // If the last message was sent by activeUserId, all prior messages in this conversation are already read
+          unreadCount = 0;
         } else {
           unreadCount = db.messages.filter(
             (m) =>

@@ -246,14 +246,19 @@ export default function ContactsSidebar({
                       {user.typingTo === currentUser.id ? (
                         <span className="text-[#00a884] font-medium animate-pulse">typing...</span>
                       ) : (
-                        user.lastMessage?.text ||
-                        (user.lastMessage?.image
-                          ? '📷 Photo'
-                          : user.lastMessage?.video
-                          ? '🎥 Video'
-                          : user.lastMessage?.audio
-                          ? '🎙️ Voice note'
-                          : 'No messages yet')
+                        <>
+                          {user.lastMessage?.senderId === currentUser.id && (
+                            <span className="opacity-70 font-normal">You: </span>
+                          )}
+                          {user.lastMessage?.text ||
+                            (user.lastMessage?.image
+                              ? '📷 Photo'
+                              : user.lastMessage?.video
+                              ? '🎥 Video'
+                              : user.lastMessage?.audio
+                              ? '🎙️ Voice note'
+                              : 'No messages yet')}
+                        </>
                       )}
                     </p>
                     {Boolean(user.unreadCount && user.unreadCount > 0) && (
